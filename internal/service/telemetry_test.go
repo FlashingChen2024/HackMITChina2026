@@ -48,10 +48,16 @@ type updatedMealRecord struct {
 	TotalLeftoverG  int
 }
 
+type servedMealRecord struct {
+	MealID          string
+	ServedIncrement int
+}
+
 type memoryMealPersistence struct {
-	created []createdMealRecord
-	curves  []curveRecord
-	updated []updatedMealRecord
+	created   []createdMealRecord
+	servedAdd []servedMealRecord
+	curves    []curveRecord
+	updated   []updatedMealRecord
 }
 
 func (m *memoryMealPersistence) CreateMeal(_ context.Context, mealID string, startTime time.Time, totalServedG int) error {
@@ -68,6 +74,14 @@ func (m *memoryMealPersistence) InsertMealCurveData(_ context.Context, mealID st
 		MealID:    mealID,
 		Timestamp: timestamp.UTC(),
 		WeightG:   weightG,
+	})
+	return nil
+}
+
+func (m *memoryMealPersistence) AddMealServedG(_ context.Context, mealID string, servedIncrement int) error {
+	m.servedAdd = append(m.servedAdd, servedMealRecord{
+		MealID:          mealID,
+		ServedIncrement: servedIncrement,
 	})
 	return nil
 }
@@ -183,5 +197,87 @@ func TestNewMealIDHasFixedLength(t *testing.T) {
 	mealID := newMealID("very-long-device-id-that-would-overflow", time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC))
 	if len(mealID) != 36 {
 		t.Fatalf("expected meal_id length 36, got %d (%s)", len(mealID), mealID)
+	}
+}
+
+func TestTelemetrySupportsEatingRefillAndAccumulatesServed(t *testing.T) {
+	store := newMemoryDeviceStateStore()
+	persistence := &memoryMealPersistence{}
+	svc := NewTelemetryService(store, log.Default(), persistence)
+	ctx := context.Background()
+
+	base := time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC)
+	inputs := []TelemetryInput{
+		{DeviceID: "dev-1", WeightG: 500, Timestamp: base},
+		{DeviceID: "dev-1", WeightG: 450, Timestamp: base.Add(16 * time.Second)}, // SERVING -> EATING
+		{DeviceID: "dev-1", WeightG: 300, Timestamp: base.Add(20 * time.Second)}, // EATING
+		{DeviceID: "dev-1", WeightG: 800, Timestamp: base.Add(24 * time.Second)}, // EATING -> SERVING (refill)
+		{DeviceID: "dev-1", WeightG: 780, Timestamp: base.Add(40 * time.Second)}, // SERVING -> EATING, add served
+		{DeviceID: "dev-1", WeightG: 700, Timestamp: base.Add(44 * time.Second)}, // EATING
+		{DeviceID: "dev-1", WeightG: 0, Timestamp: base.Add(50 * time.Second)},   // EATING -> IDLE
+	}
+
+	for _, input := range inputs {
+		if _, err := svc.Process(ctx, input); err != nil {
+			t.Fatalf("process telemetry failed: %v", err)
+		}
+	}
+
+	if len(persistence.created) != 1 {
+		t.Fatalf("expected 1 meal creation, got %d", len(persistence.created))
+	}
+	if persistence.created[0].TotalServedG != 500 {
+		t.Fatalf("expected initial served=500, got %d", persistence.created[0].TotalServedG)
+	}
+	if len(persistence.servedAdd) != 1 {
+		t.Fatalf("expected 1 served increment update, got %d", len(persistence.servedAdd))
+	}
+	if persistence.servedAdd[0].ServedIncrement != 500 {
+		t.Fatalf("expected served increment=500, got %d", persistence.servedAdd[0].ServedIncrement)
+	}
+	if len(persistence.updated) != 1 {
+		t.Fatalf("expected 1 summary update, got %d", len(persistence.updated))
+	}
+	if persistence.updated[0].TotalLeftoverG != 700 {
+		t.Fatalf("expected leftover=700, got %d", persistence.updated[0].TotalLeftoverG)
+	}
+}
+
+type lockingMemoryStore struct {
+	memoryDeviceStateStore
+	lockCalls   int
+	unlockCalls int
+}
+
+func newLockingMemoryStore() *lockingMemoryStore {
+	return &lockingMemoryStore{
+		memoryDeviceStateStore: memoryDeviceStateStore{
+			data: make(map[string]DeviceSession),
+		},
+	}
+}
+
+func (s *lockingMemoryStore) Lock(_ context.Context, _ string) (func(), error) {
+	s.lockCalls++
+	return func() { s.unlockCalls++ }, nil
+}
+
+func TestTelemetryUsesDeviceLockWhenAvailable(t *testing.T) {
+	store := newLockingMemoryStore()
+	svc := NewTelemetryService(store, log.Default())
+
+	_, err := svc.Process(context.Background(), TelemetryInput{
+		DeviceID:  "dev-lock",
+		WeightG:   100,
+		Timestamp: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("process telemetry failed: %v", err)
+	}
+	if store.lockCalls != 1 {
+		t.Fatalf("expected lock calls=1, got %d", store.lockCalls)
+	}
+	if store.unlockCalls != 1 {
+		t.Fatalf("expected unlock calls=1, got %d", store.unlockCalls)
 	}
 }

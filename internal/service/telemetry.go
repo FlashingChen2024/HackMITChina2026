@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha1"
 	"fmt"
 	"log"
@@ -34,6 +35,7 @@ type DeviceSession struct {
 	LastWeight        int
 	LastTimestamp     int64
 	TempPeakWeight    int
+	ServingBaseWeight int
 	ActiveMealID      string
 	ActiveMealStartTS int64
 }
@@ -45,6 +47,7 @@ type DeviceStateStore interface {
 
 type MealPersistence interface {
 	CreateMeal(ctx context.Context, mealID string, startTime time.Time, totalServedG int) error
+	AddMealServedG(ctx context.Context, mealID string, servedIncrement int) error
 	InsertMealCurveData(ctx context.Context, mealID string, timestamp time.Time, weightG int) error
 	UpdateMealSummary(ctx context.Context, mealID string, durationMinutes int, totalLeftoverG int) error
 }
@@ -52,6 +55,10 @@ type MealPersistence interface {
 type noopMealPersistence struct{}
 
 func (noopMealPersistence) CreateMeal(_ context.Context, _ string, _ time.Time, _ int) error {
+	return nil
+}
+
+func (noopMealPersistence) AddMealServedG(_ context.Context, _ string, _ int) error {
 	return nil
 }
 
@@ -69,6 +76,10 @@ type TelemetryService struct {
 	logger      *log.Logger
 }
 
+type deviceStateLocker interface {
+	Lock(ctx context.Context, deviceID string) (func(), error)
+}
+
 func NewTelemetryService(store DeviceStateStore, logger *log.Logger, persistence ...MealPersistence) *TelemetryService {
 	target := MealPersistence(noopMealPersistence{})
 	if len(persistence) > 0 && persistence[0] != nil {
@@ -83,6 +94,16 @@ func NewTelemetryService(store DeviceStateStore, logger *log.Logger, persistence
 }
 
 func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (TelemetryResult, error) {
+	unlock := func() {}
+	if locker, ok := s.store.(deviceStateLocker); ok {
+		var err error
+		unlock, err = locker.Lock(ctx, input.DeviceID)
+		if err != nil {
+			return TelemetryResult{}, err
+		}
+	}
+	defer unlock()
+
 	session, err := s.store.Load(ctx, input.DeviceID)
 	if err != nil {
 		return TelemetryResult{}, err
@@ -109,6 +130,7 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 		if delta > 50 {
 			s.logger.Printf("[状态跃迁] IDLE -> SERVING device=%s", input.DeviceID)
 			session.CurrentState = StateServing
+			session.ServingBaseWeight = 0
 			session.TempPeakWeight = input.WeightG
 		}
 	case StateServing:
@@ -117,13 +139,26 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 		}
 		if delta <= 0 && session.LastTimestamp > 0 &&
 			input.Timestamp.Sub(time.Unix(session.LastTimestamp, 0)) >= 15*time.Second {
-			session.ActiveMealID = newMealID(input.DeviceID, input.Timestamp)
-			if err := s.persistence.CreateMeal(ctx, session.ActiveMealID, input.Timestamp, session.TempPeakWeight); err != nil {
-				return TelemetryResult{}, fmt.Errorf("create meal: %w", err)
+			servedIncrement := session.TempPeakWeight - session.ServingBaseWeight
+			if servedIncrement < 0 {
+				servedIncrement = 0
 			}
+
+			if session.ActiveMealID == "" {
+				session.ActiveMealID = newMealID(input.DeviceID, input.Timestamp)
+				if err := s.persistence.CreateMeal(ctx, session.ActiveMealID, input.Timestamp, servedIncrement); err != nil {
+					return TelemetryResult{}, fmt.Errorf("create meal: %w", err)
+				}
+				session.ActiveMealStartTS = input.Timestamp.Unix()
+			} else if servedIncrement > 0 {
+				if err := s.persistence.AddMealServedG(ctx, session.ActiveMealID, servedIncrement); err != nil {
+					return TelemetryResult{}, fmt.Errorf("add meal served amount: %w", err)
+				}
+			}
+
 			s.logger.Printf("[状态跃迁] SERVING -> EATING device=%s", input.DeviceID)
-			session.ActiveMealStartTS = input.Timestamp.Unix()
 			session.CurrentState = StateEating
+
 			if input.WeightG >= 10 {
 				if err := s.persistence.InsertMealCurveData(ctx, session.ActiveMealID, input.Timestamp, input.WeightG); err != nil {
 					return TelemetryResult{}, fmt.Errorf("insert meal curve data: %w", err)
@@ -131,6 +166,14 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 			}
 		}
 	case StateEating:
+		if delta > 50 {
+			s.logger.Printf("[状态跃迁] EATING -> SERVING device=%s reason=refill", input.DeviceID)
+			session.CurrentState = StateServing
+			session.ServingBaseWeight = session.LastWeight
+			session.TempPeakWeight = input.WeightG
+			break
+		}
+
 		if input.WeightG < 10 {
 			s.logger.Printf("[状态跃迁] EATING -> IDLE device=%s", input.DeviceID)
 			durationMinutes := durationMinutes(session.ActiveMealStartTS, input.Timestamp.Unix())
@@ -144,6 +187,7 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 			session.CurrentState = StateIdle
 			session.ActiveMealID = ""
 			session.ActiveMealStartTS = 0
+			session.ServingBaseWeight = 0
 			session.TempPeakWeight = 0
 		} else {
 			if input.WeightG != session.LastWeight {
@@ -188,6 +232,7 @@ func (s *RedisDeviceStateStore) Load(ctx context.Context, deviceID string) (Devi
 		CurrentState:      values["current_state"],
 		ActiveMealID:      values["active_meal_id"],
 		ActiveMealStartTS: parseInt64(values["active_meal_start_ts"]),
+		ServingBaseWeight: parseInt(values["serving_base_weight"]),
 		LastWeight:        parseInt(values["last_weight"]),
 		LastTimestamp:     parseInt64(values["last_timestamp"]),
 		TempPeakWeight:    parseInt(values["temp_peak_weight"]),
@@ -204,6 +249,7 @@ func (s *RedisDeviceStateStore) Save(ctx context.Context, deviceID string, sessi
 		"last_weight":          session.LastWeight,
 		"last_timestamp":       session.LastTimestamp,
 		"temp_peak_weight":     session.TempPeakWeight,
+		"serving_base_weight":  session.ServingBaseWeight,
 		"active_meal_id":       session.ActiveMealID,
 		"active_meal_start_ts": session.ActiveMealStartTS,
 	}
@@ -220,6 +266,54 @@ func redisDeviceKey(deviceID string) string {
 func newMealID(deviceID string, t time.Time) string {
 	sum := sha1.Sum([]byte(deviceID))
 	return fmt.Sprintf("%019d-%x", t.UTC().UnixNano(), sum[:8])
+}
+
+func (s *RedisDeviceStateStore) Lock(ctx context.Context, deviceID string) (func(), error) {
+	lockKey := redisDeviceLockKey(deviceID)
+	token, err := randomHex(16)
+	if err != nil {
+		return nil, fmt.Errorf("generate lock token: %w", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		ok, err := s.client.SetNX(ctx, lockKey, token, 5*time.Second).Result()
+		if err != nil {
+			return nil, fmt.Errorf("acquire redis lock: %w", err)
+		}
+		if ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("acquire redis lock timeout")
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	unlock := func() {
+		_, _ = s.client.Eval(
+			context.Background(),
+			"if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+			[]string{lockKey},
+			token,
+		).Result()
+	}
+	return unlock, nil
+}
+
+func redisDeviceLockKey(deviceID string) string {
+	return "device_lock:" + deviceID
+}
+
+func randomHex(size int) (string, error) {
+	raw := make([]byte, size)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", raw), nil
 }
 
 func parseInt(value string) int {

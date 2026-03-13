@@ -45,6 +45,23 @@ func (p *GormMealPersistence) InsertMealCurveData(ctx context.Context, mealID st
 	return nil
 }
 
+func (p *GormMealPersistence) AddMealServedG(ctx context.Context, mealID string, servedIncrement int) error {
+	if servedIncrement <= 0 {
+		return nil
+	}
+
+	tx := p.db.WithContext(ctx).Model(&model.Meal{}).
+		Where("meal_id = ?", mealID).
+		Update("total_served_g", gorm.Expr("total_served_g + ?", servedIncrement))
+	if tx.Error != nil {
+		return fmt.Errorf("increase meal served amount: %w", tx.Error)
+	}
+	if tx.RowsAffected == 0 {
+		return fmt.Errorf("increase meal served amount: meal %s not found", mealID)
+	}
+	return nil
+}
+
 func (p *GormMealPersistence) UpdateMealSummary(ctx context.Context, mealID string, durationMinutes int, totalLeftoverG int) error {
 	update := map[string]any{
 		"duration_minutes": durationMinutes,

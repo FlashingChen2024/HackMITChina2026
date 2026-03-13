@@ -79,7 +79,7 @@
 
 
 
-### 🔴 M6: 健壮性与并发压测 (Stress Test & Edge Cases)
+### 🟢 M6: 健壮性与并发压测 (Stress Test & Edge Cases)（已完成）
 
 * **开发任务**:
 1. 在代码中补充对“中途加饭”（`EATING -> SERVING`）逻辑的支持。

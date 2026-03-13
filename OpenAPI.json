@@ -1,0 +1,546 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "K-XYZ Backend API",
+    "version": "2026-03-13",
+    "description": "Generated from current Gin routes and handlers. Both /api/v1 and legacy routes are included."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080",
+      "description": "Local development"
+    }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Telemetry" },
+    { "name": "Meals" },
+    { "name": "Compatibility" }
+  ],
+  "paths": {
+    "/api/v1/ping": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Ping",
+        "operationId": "pingV1",
+        "responses": {
+          "200": {
+            "description": "Pong response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PingResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hardware/telemetry": {
+      "post": {
+        "tags": ["Telemetry"],
+        "summary": "Report telemetry weight",
+        "operationId": "postTelemetryV1",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TelemetryRequest" },
+              "examples": {
+                "sample": {
+                  "value": {
+                    "device_id": "dev-1",
+                    "weight_g": 450,
+                    "timestamp": "2026-03-13T10:00:05Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Processed successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TelemetryResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "bad_body": { "value": { "error": "invalid request body" } },
+                  "bad_ts": { "value": { "error": "timestamp must be RFC3339 or unix seconds" } }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "failed": { "value": { "error": "process telemetry failed" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meals": {
+      "get": {
+        "tags": ["Meals"],
+        "summary": "List meals by start_time desc",
+        "description": "Fixed page size is 20.",
+        "operationId": "listMealsV1",
+        "parameters": [
+          { "$ref": "#/components/parameters/CursorParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MealListResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "bad_cursor": { "value": { "error": "cursor must be RFC3339 or unix seconds" } }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Query failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "failed": { "value": { "error": "list meals failed" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meals/{meal_id}": {
+      "get": {
+        "tags": ["Meals"],
+        "summary": "Get meal detail",
+        "operationId": "getMealByIdV1",
+        "parameters": [
+          { "$ref": "#/components/parameters/MealIDPathParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Meal" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "missing_id": { "value": { "error": "meal_id is required" } }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Meal not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "not_found": { "value": { "error": "meal not found" } }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Query failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "failed": { "value": { "error": "get meal failed" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meals/{meal_id}/trajectory": {
+      "get": {
+        "tags": ["Meals"],
+        "summary": "Get meal trajectory",
+        "operationId": "getMealTrajectoryV1",
+        "parameters": [
+          { "$ref": "#/components/parameters/MealIDPathParam" },
+          { "$ref": "#/components/parameters/LastTimestampParam" },
+          { "$ref": "#/components/parameters/SampleIntervalParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MealTrajectoryResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "bad_last_ts": { "value": { "error": "last_timestamp must be RFC3339 or unix seconds" } },
+                  "bad_interval": { "value": { "error": "sample_interval must be a positive integer" } }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Query failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "failed": { "value": { "error": "get meal trajectory failed" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ping": {
+      "get": {
+        "tags": ["Compatibility"],
+        "summary": "Ping (legacy route)",
+        "operationId": "pingLegacy",
+        "responses": {
+          "200": {
+            "description": "Pong response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PingResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hardware/telemetry": {
+      "post": {
+        "tags": ["Compatibility"],
+        "summary": "Report telemetry weight (legacy route)",
+        "operationId": "postTelemetryLegacy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TelemetryRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Processed successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TelemetryResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meals": {
+      "get": {
+        "tags": ["Compatibility"],
+        "summary": "List meals (legacy route)",
+        "operationId": "listMealsLegacy",
+        "parameters": [
+          { "$ref": "#/components/parameters/CursorParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MealListResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Query failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meals/{meal_id}": {
+      "get": {
+        "tags": ["Compatibility"],
+        "summary": "Get meal detail (legacy route)",
+        "operationId": "getMealByIdLegacy",
+        "parameters": [
+          { "$ref": "#/components/parameters/MealIDPathParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Meal" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": {
+            "description": "Meal not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Query failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meals/{meal_id}/trajectory": {
+      "get": {
+        "tags": ["Compatibility"],
+        "summary": "Get meal trajectory (legacy route)",
+        "operationId": "getMealTrajectoryLegacy",
+        "parameters": [
+          { "$ref": "#/components/parameters/MealIDPathParam" },
+          { "$ref": "#/components/parameters/LastTimestampParam" },
+          { "$ref": "#/components/parameters/SampleIntervalParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Query success",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MealTrajectoryResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Query failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "MealIDPathParam": {
+        "name": "meal_id",
+        "in": "path",
+        "required": true,
+        "description": "Meal ID",
+        "schema": { "type": "string" }
+      },
+      "CursorParam": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "description": "Pagination cursor. Supports RFC3339 / RFC3339Nano, or Unix seconds as string.",
+        "schema": {
+          "type": "string",
+          "example": "2026-03-13T08:00:00Z"
+        }
+      },
+      "LastTimestampParam": {
+        "name": "last_timestamp",
+        "in": "query",
+        "required": false,
+        "description": "Incremental pull start time. Returns points with timestamp greater than this value.",
+        "schema": {
+          "type": "string",
+          "example": "2026-03-13T10:00:05.456Z"
+        }
+      },
+      "SampleIntervalParam": {
+        "name": "sample_interval",
+        "in": "query",
+        "required": false,
+        "description": "Downsample interval in seconds. Must be a positive integer.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "example": 5
+        }
+      }
+    },
+    "schemas": {
+      "PingResponse": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "example": "pong" },
+          "timestamp": { "type": "string", "format": "date-time", "example": "2026-03-13T12:00:00Z" }
+        },
+        "required": ["message", "timestamp"]
+      },
+      "TelemetryRequest": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string", "example": "dev-1" },
+          "weight_g": { "type": "integer", "example": 450 },
+          "timestamp": {
+            "type": "string",
+            "description": "Optional. RFC3339 or Unix seconds as string. If omitted, server uses current UTC time.",
+            "example": "2026-03-13T10:00:05Z"
+          }
+        },
+        "required": ["device_id", "weight_g"]
+      },
+      "TelemetryResponse": {
+        "type": "object",
+        "properties": {
+          "device_id": { "type": "string", "example": "dev-1" },
+          "previous_state": { "type": "string", "enum": ["IDLE", "SERVING", "EATING"], "example": "IDLE" },
+          "current_state": { "type": "string", "enum": ["IDLE", "SERVING", "EATING"], "example": "SERVING" },
+          "timestamp": { "type": "string", "format": "date-time", "example": "2026-03-13T10:00:05Z" }
+        },
+        "required": ["device_id", "previous_state", "current_state", "timestamp"]
+      },
+      "Meal": {
+        "type": "object",
+        "properties": {
+          "meal_id": { "type": "string", "example": "1741867200000000000-9f45f6ab12cd34ef" },
+          "user_id": { "type": "string", "example": "" },
+          "start_time": { "type": "string", "format": "date-time", "example": "2026-03-13T08:00:00Z" },
+          "duration_minutes": { "type": "integer", "example": 12 },
+          "total_served_g": { "type": "integer", "example": 500 },
+          "total_leftover_g": { "type": "integer", "example": 400 }
+        },
+        "required": ["meal_id", "user_id", "start_time", "duration_minutes", "total_served_g", "total_leftover_g"]
+      },
+      "MealListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Meal" }
+          },
+          "next_cursor": {
+            "type": "string",
+            "description": "Next page cursor. Empty string means no more data.",
+            "example": "2026-03-13T08:00:00Z"
+          }
+        },
+        "required": ["items", "next_cursor"]
+      },
+      "MealTrajectoryPoint": {
+        "type": "object",
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time", "example": "2026-03-13T10:00:05.456Z" },
+          "weight_g": { "type": "integer", "example": 400 }
+        },
+        "required": ["timestamp", "weight_g"]
+      },
+      "MealTrajectoryResponse": {
+        "type": "object",
+        "properties": {
+          "meal_id": { "type": "string", "example": "meal-1" },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MealTrajectoryPoint" }
+          },
+          "last_timestamp": {
+            "type": "string",
+            "description": "Last timestamp in current response. Empty string if no items.",
+            "example": "2026-03-13T10:00:05.456Z"
+          }
+        },
+        "required": ["meal_id", "items", "last_timestamp"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "invalid request body" }
+        },
+        "required": ["error"]
+      }
+    }
+  }
+}
