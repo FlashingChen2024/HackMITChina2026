@@ -12,6 +12,7 @@ import (
 	"kxyz-backend/internal/api"
 	"kxyz-backend/internal/config"
 	"kxyz-backend/internal/server"
+	"kxyz-backend/internal/service"
 	"kxyz-backend/internal/store"
 )
 
@@ -44,7 +45,20 @@ func main() {
 	log.Printf("redis connected")
 
 	pingHandler := api.NewPingHandler()
-	router := server.NewRouter(pingHandler.Handle)
+	deviceStateStore := service.NewRedisDeviceStateStore(redisClient)
+	mealPersistence := store.NewGormMealPersistence(mysqlDB)
+	telemetryService := service.NewTelemetryService(deviceStateStore, log.Default(), mealPersistence)
+	telemetryHandler := api.NewTelemetryHandler(telemetryService)
+	mealQueryStore := store.NewGormMealQueryStore(mysqlDB)
+	mealQueryService := service.NewMealQueryService(mealQueryStore)
+	mealsHandler := api.NewMealsHandler(mealQueryService)
+	router := server.NewRouter(
+		pingHandler.Handle,
+		telemetryHandler.Handle,
+		mealsHandler.List,
+		mealsHandler.GetByID,
+		mealsHandler.Trajectory,
+	)
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

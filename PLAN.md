@@ -18,7 +18,7 @@
 
 
 
-### 🟢 M2: 状态机纯内存运转 (FSM in Redis)
+### 🟢 M2: 状态机纯内存运转 (FSM in Redis)（已完成）
 
 * **开发任务**:
 1. 开发 `POST /hardware/telemetry` 路由。
@@ -34,7 +34,7 @@
 
 
 
-### 🟡 M3: 数据真实落盘 (Persistence)
+### 🟢 M3: 数据真实落盘 (Persistence)（已完成）
 
 * **开发任务**:
 1. 将 M2 中打印的日志，替换为真实的 GORM 数据库操作。
@@ -50,7 +50,7 @@
 
 
 
-### 🟡 M4: 基础数据读取 (Basic Query)
+### 🟢 M4: 基础数据读取 (Basic Query)（已完成）
 
 * **开发任务**:
 1. 实现 `GET /meals` 接口，完成基于 `cursor`（时间戳）的分页逻辑。
@@ -64,7 +64,7 @@
 
 
 
-### 🟠 M5: 高阶轨迹大一统接口 (Advanced Trajectory)
+### 🟢 M5: 高阶轨迹大一统接口 (Advanced Trajectory)（已完成）
 
 * **开发任务**:
 1. 开发 `GET /meals/{meal_id}/trajectory`。
