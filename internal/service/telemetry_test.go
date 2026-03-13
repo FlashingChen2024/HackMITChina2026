@@ -243,6 +243,68 @@ func TestTelemetrySupportsEatingRefillAndAccumulatesServed(t *testing.T) {
 	}
 }
 
+func TestTelemetryEndsEatingAfterStable600Seconds(t *testing.T) {
+	store := newMemoryDeviceStateStore()
+	persistence := &memoryMealPersistence{}
+	svc := NewTelemetryService(store, log.Default(), persistence)
+	ctx := context.Background()
+
+	base := time.Date(2026, 3, 13, 13, 0, 0, 0, time.UTC)
+	inputs := []TelemetryInput{
+		{DeviceID: "dev-stable", WeightG: 500, Timestamp: base},
+		{DeviceID: "dev-stable", WeightG: 490, Timestamp: base.Add(16 * time.Second)},                // SERVING -> EATING
+		{DeviceID: "dev-stable", WeightG: 490, Timestamp: base.Add(10*time.Minute + 20*time.Second)}, // stable >=600s
+	}
+
+	var lastResult TelemetryResult
+	for _, input := range inputs {
+		result, err := svc.Process(ctx, input)
+		if err != nil {
+			t.Fatalf("process telemetry failed: %v", err)
+		}
+		lastResult = result
+	}
+
+	if lastResult.CurrentState != StateIdle {
+		t.Fatalf("expected state IDLE after stable 600s, got %s", lastResult.CurrentState)
+	}
+	if len(persistence.updated) != 1 {
+		t.Fatalf("expected 1 meal summary update, got %d", len(persistence.updated))
+	}
+	if persistence.updated[0].TotalLeftoverG != 490 {
+		t.Fatalf("expected leftover=490, got %d", persistence.updated[0].TotalLeftoverG)
+	}
+}
+
+func TestTelemetryEnforcesMonotonicCurveInEatingState(t *testing.T) {
+	store := newMemoryDeviceStateStore()
+	persistence := &memoryMealPersistence{}
+	svc := NewTelemetryService(store, log.Default(), persistence)
+	ctx := context.Background()
+
+	base := time.Date(2026, 3, 13, 14, 0, 0, 0, time.UTC)
+	inputs := []TelemetryInput{
+		{DeviceID: "dev-mono", WeightG: 500, Timestamp: base},
+		{DeviceID: "dev-mono", WeightG: 490, Timestamp: base.Add(16 * time.Second)}, // SERVING -> EATING, insert 490
+		{DeviceID: "dev-mono", WeightG: 495, Timestamp: base.Add(24 * time.Second)}, // should be clamped to 490
+		{DeviceID: "dev-mono", WeightG: 480, Timestamp: base.Add(32 * time.Second)}, // insert 480
+		{DeviceID: "dev-mono", WeightG: 0, Timestamp: base.Add(40 * time.Second)},   // finish
+	}
+
+	for _, input := range inputs {
+		if _, err := svc.Process(ctx, input); err != nil {
+			t.Fatalf("process telemetry failed: %v", err)
+		}
+	}
+
+	if len(persistence.curves) != 2 {
+		t.Fatalf("expected 2 curve points, got %d", len(persistence.curves))
+	}
+	if persistence.curves[0].WeightG != 490 || persistence.curves[1].WeightG != 480 {
+		t.Fatalf("expected curve weights [490,480], got [%d,%d]", persistence.curves[0].WeightG, persistence.curves[1].WeightG)
+	}
+}
+
 type lockingMemoryStore struct {
 	memoryDeviceStateStore
 	lockCalls   int

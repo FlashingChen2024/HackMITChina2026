@@ -38,6 +38,7 @@ type DeviceSession struct {
 	ServingBaseWeight int
 	ActiveMealID      string
 	ActiveMealStartTS int64
+	EatingStableTS    int64
 }
 
 type DeviceStateStore interface {
@@ -115,8 +116,9 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 
 	previousState := session.CurrentState
 	delta := input.WeightG - session.LastWeight
+	weightForSave := input.WeightG
 
-	if abs(delta) < 5 {
+	if session.CurrentState != StateEating && abs(delta) < 5 {
 		s.logger.Printf("[死区拦截] 不执行动作 device=%s delta=%dg", input.DeviceID, delta)
 		return TelemetryResult{
 			DeviceID:      input.DeviceID,
@@ -171,34 +173,58 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 			session.CurrentState = StateServing
 			session.ServingBaseWeight = session.LastWeight
 			session.TempPeakWeight = input.WeightG
+			session.EatingStableTS = 0
+			weightForSave = input.WeightG
 			break
 		}
 
-		if input.WeightG < 10 {
-			s.logger.Printf("[状态跃迁] EATING -> IDLE device=%s", input.DeviceID)
-			durationMinutes := durationMinutes(session.ActiveMealStartTS, input.Timestamp.Unix())
-			totalLeftoverG := session.LastWeight
-			if totalLeftoverG < 0 {
-				totalLeftoverG = 0
+		effectiveWeight := input.WeightG
+		if effectiveWeight > session.LastWeight {
+			// In EATING state we enforce a monotonic non-increasing trajectory.
+			effectiveWeight = session.LastWeight
+		}
+		effectiveDelta := effectiveWeight - session.LastWeight
+
+		if abs(effectiveDelta) < 5 {
+			s.logger.Printf("[死区拦截] 不执行动作 device=%s delta=%dg", input.DeviceID, effectiveDelta)
+			if abs(effectiveDelta) < 1 {
+				if session.EatingStableTS == 0 {
+					if session.LastTimestamp > 0 {
+						session.EatingStableTS = session.LastTimestamp
+					} else {
+						session.EatingStableTS = input.Timestamp.Unix()
+					}
+				}
+				if input.Timestamp.Unix()-session.EatingStableTS >= 600 {
+					if err := s.finishMeal(ctx, &session, input.DeviceID, input.Timestamp.Unix()); err != nil {
+						return TelemetryResult{}, err
+					}
+				}
+			} else {
+				session.EatingStableTS = 0
 			}
-			if err := s.persistence.UpdateMealSummary(ctx, session.ActiveMealID, durationMinutes, totalLeftoverG); err != nil {
-				return TelemetryResult{}, fmt.Errorf("update meal summary: %w", err)
+			weightForSave = session.LastWeight
+			break
+		}
+
+		session.EatingStableTS = 0
+
+		if effectiveWeight < 10 {
+			if err := s.finishMeal(ctx, &session, input.DeviceID, input.Timestamp.Unix()); err != nil {
+				return TelemetryResult{}, err
 			}
-			session.CurrentState = StateIdle
-			session.ActiveMealID = ""
-			session.ActiveMealStartTS = 0
-			session.ServingBaseWeight = 0
-			session.TempPeakWeight = 0
+			weightForSave = effectiveWeight
 		} else {
-			if input.WeightG != session.LastWeight {
-				if err := s.persistence.InsertMealCurveData(ctx, session.ActiveMealID, input.Timestamp, input.WeightG); err != nil {
+			if effectiveWeight != session.LastWeight {
+				if err := s.persistence.InsertMealCurveData(ctx, session.ActiveMealID, input.Timestamp, effectiveWeight); err != nil {
 					return TelemetryResult{}, fmt.Errorf("insert meal curve data: %w", err)
 				}
 			}
+			weightForSave = effectiveWeight
 		}
 	}
 
-	session.LastWeight = input.WeightG
+	session.LastWeight = weightForSave
 	session.LastTimestamp = input.Timestamp.Unix()
 	if err := s.store.Save(ctx, input.DeviceID, session); err != nil {
 		return TelemetryResult{}, err
@@ -209,6 +235,27 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 		PreviousState: previousState,
 		CurrentState:  session.CurrentState,
 	}, nil
+}
+
+func (s *TelemetryService) finishMeal(ctx context.Context, session *DeviceSession, deviceID string, endUnix int64) error {
+	s.logger.Printf("[状态跃迁] EATING -> IDLE device=%s", deviceID)
+
+	durationMinutes := durationMinutes(session.ActiveMealStartTS, endUnix)
+	totalLeftoverG := session.LastWeight
+	if totalLeftoverG < 0 {
+		totalLeftoverG = 0
+	}
+	if err := s.persistence.UpdateMealSummary(ctx, session.ActiveMealID, durationMinutes, totalLeftoverG); err != nil {
+		return fmt.Errorf("update meal summary: %w", err)
+	}
+
+	session.CurrentState = StateIdle
+	session.ActiveMealID = ""
+	session.ActiveMealStartTS = 0
+	session.ServingBaseWeight = 0
+	session.TempPeakWeight = 0
+	session.EatingStableTS = 0
+	return nil
 }
 
 type RedisDeviceStateStore struct {
@@ -236,6 +283,7 @@ func (s *RedisDeviceStateStore) Load(ctx context.Context, deviceID string) (Devi
 		LastWeight:        parseInt(values["last_weight"]),
 		LastTimestamp:     parseInt64(values["last_timestamp"]),
 		TempPeakWeight:    parseInt(values["temp_peak_weight"]),
+		EatingStableTS:    parseInt64(values["eating_stable_ts"]),
 	}
 	if session.CurrentState == "" {
 		session.CurrentState = StateIdle
@@ -252,6 +300,7 @@ func (s *RedisDeviceStateStore) Save(ctx context.Context, deviceID string, sessi
 		"serving_base_weight":  session.ServingBaseWeight,
 		"active_meal_id":       session.ActiveMealID,
 		"active_meal_start_ts": session.ActiveMealStartTS,
+		"eating_stable_ts":     session.EatingStableTS,
 	}
 	if err := s.client.HSet(ctx, redisDeviceKey(deviceID), data).Err(); err != nil {
 		return fmt.Errorf("write redis state: %w", err)
