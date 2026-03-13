@@ -17,30 +17,36 @@
 每次开发只做[PLAN.md](./PLAN.md)的一个部分的内容，在结束对话前，尽量进行自测。
 每次完成一个进度后，自动在[PLAN.md](./PLAN.md)中对应的标题处标记“已完成”。
 
-[本地联调环境（2026-03-13已验证）]
-MySQL:
-- 地址: 127.0.0.1:3306
-- 用户: root
-- 密码: 963487158835
-- 数据库: kxyz
-- 核心表: meals, meal_curve_data
+[开发环境要求]
+1) 当 AI 需要启动开发服务器时，优先使用 Docker 拉起 MySQL 和 Redis，不直接安装到系统服务中。
+2) 推荐镜像:
+- MySQL: `mysql:8.0`
+- Redis: `redis:7-alpine`
+3) 推荐容器启动命令:
+docker pull mysql:8.0
+docker pull redis:7-alpine
+docker run -d --name kxyz-mysql -e MYSQL_ROOT_PASSWORD=963487158835 -e MYSQL_DATABASE=kxyz -p 3306:3306 mysql:8.0
+docker run -d --name kxyz-redis -p 6379:6379 redis:7-alpine
+4) 若容器已存在，优先复用:
+docker start kxyz-mysql
+docker start kxyz-redis
 
-Redis:
-- 地址: 127.0.0.1:6379
-- 密码: 空
-- DB: 0
+[项目启动]
+1) 确保 MySQL 与 Redis 已通过 Docker 启动:
+docker ps
 
-后端启动环境变量:
-- HTTP_PORT=8080
-- MYSQL_DSN=root:963487158835@tcp(127.0.0.1:3306)/kxyz?charset=utf8mb4&parseTime=True&loc=Local
-- REDIS_ADDR=127.0.0.1:6379
-- REDIS_PASSWORD=
-- REDIS_DB=0
+2) 在 PowerShell 设置后端环境变量:
+$env:HTTP_PORT="8080"
+$env:MYSQL_DSN="root:963487158835@tcp(127.0.0.1:3306)/kxyz?charset=utf8mb4&parseTime=True&loc=Local"
+$env:REDIS_ADDR="127.0.0.1:6379"
+$env:REDIS_PASSWORD=""
+$env:REDIS_DB="0"
 
-常用联调命令:
-1) 连接 MySQL:
-& 'C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe' -uroot -p963487158835
-2) 查看 Redis 设备状态:
-redis-cli -h 127.0.0.1 -p 6379 HGETALL device:dev-1
-3) 清理设备状态:
-redis-cli -h 127.0.0.1 -p 6379 DEL device:dev-1
+3) 在项目根目录启动后端:
+go run ./cmd/server
+
+4) 健康检查（新开一个终端）:
+curl http://127.0.0.1:8080/api/v1/ping
+
+5) 可选：启动前先做自测:
+go test ./...
