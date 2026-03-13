@@ -1,0 +1,25 @@
+{
+  "name": "mit-module5-diet-tracking",
+  "version": "1.0.0",
+  "description": "模块5：饮食情况追踪与AI分析建议",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "cron": "node backend/jobs/dietSummaryCron.js",
+    "migrate": "node database/runMigrations.js",
+    "test": "node --test backend/services/dietSummaryService.test.js backend/services/promptService.test.js backend/services/diagnosisService.test.js backend/services/aiAnalysisService.test.js"
+  },
+  "keywords": ["diet", "tracking", "ai", "mysql"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "mysql2": "^3.6.5",
+    "node-cron": "^3.0.3",
+    "openai": "^4.52.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
