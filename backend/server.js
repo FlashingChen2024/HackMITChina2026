@@ -197,6 +197,57 @@ app.delete('/api/v1/devices/bindings/:device_id', async (req, res) => {
   }
 });
 
+// ---------- 规范：GET /meals、GET /meals/:meal_id、GET /meals/:meal_id/trajectory ----------
+
+/** 历史用餐列表（游标分页）GET /api/v1/meals?user_id=&cursor=&limit= */
+app.get('/api/v1/meals', async (req, res) => {
+  try {
+    const { listMeals } = require('./services/mealsService');
+    const userId = Number(req.query.user_id);
+    if (!userId) {
+      return res.status(400).json({ code: 400, message: '缺少 user_id' });
+    }
+    const cursor = req.query.cursor;
+    const limit = req.query.limit;
+    const result = await listMeals(userId, cursor, limit);
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ code: 500, message: err.message });
+  }
+});
+
+/** 就餐时序轨迹 GET /api/v1/meals/:meal_id/trajectory（须在 /meals/:meal_id 之前注册） */
+app.get('/api/v1/meals/:meal_id/trajectory', async (req, res) => {
+  try {
+    const { getMealTrajectory } = require('./services/mealsService');
+    const mealId = req.params.meal_id;
+    const lastTimestamp = req.query.last_timestamp;
+    const sampleInterval = req.query.sample_interval;
+    const result = await getMealTrajectory(mealId, lastTimestamp, sampleInterval);
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ code: 500, message: err.message });
+  }
+});
+
+/** 单次用餐详情 GET /api/v1/meals/:meal_id */
+app.get('/api/v1/meals/:meal_id', async (req, res) => {
+  try {
+    const { getMealDetail } = require('./services/mealsService');
+    const mealId = req.params.meal_id;
+    const detail = await getMealDetail(mealId);
+    if (!detail) {
+      return res.status(404).json({ code: 404, message: '未找到该用餐记录' });
+    }
+    res.json(detail);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ code: 500, message: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
