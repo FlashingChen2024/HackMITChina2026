@@ -35,10 +35,7 @@ services:
       retries: 20
 
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kxyz-backend:latest
+    image: flashingchen/kxyz-backend:latest
     container_name: kxyz-backend
     restart: unless-stopped
     depends_on:
