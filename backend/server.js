@@ -30,6 +30,23 @@ app.post('/api/diet/summary/run', async (req, res) => {
   }
 });
 
+/** 导入 Mock 用餐记录（便于图表/日报有数据）POST /api/diet/seed/meal_records */
+app.post('/api/diet/seed/meal_records', async (req, res) => {
+  try {
+    const { insertMealRecords } = require('./services/seedService');
+    const body = req.body || {};
+    const records = body.records;
+    if (!Array.isArray(records)) {
+      return res.status(400).json({ code: 400, message: '缺少 body.records 数组' });
+    }
+    const result = await insertMealRecords(records);
+    res.json({ code: 200, data: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ code: 500, message: err.message });
+  }
+});
+
 /** 生成饮食分析报告（日报）POST /api/diet/analysis/generate */
 app.post('/api/diet/analysis/generate', async (req, res) => {
   try {
@@ -110,24 +127,49 @@ app.get('/api/diet/statistics/charts', async (req, res) => {
   }
 });
 
-// ---------- 方案 A：智能餐盒 API（Base /api/v1） ----------
+// ---------- 新 API 规范（Base /api/v1） ----------
 
-/** 硬件遥测上报 POST /api/v1/hardware/telemetry  body: { device_id, timestamp, weights: { grid_1..4 } }，规范要求 200 无 body */
+/** 健康检查 GET /api/v1/ping */
+app.get('/api/v1/ping', (req, res) => {
+  res.json({ message: 'pong', timestamp: new Date().toISOString() });
+});
+
+/** 硬件遥测上报 POST /api/v1/hardware/telemetry  body: { device_id, weight_g [, timestamp ] }，返回 state */
 app.post('/api/v1/hardware/telemetry', async (req, res) => {
   try {
     const { processTelemetry } = require('./services/telemetryService');
+    const { parseToUnixSeconds } = require('./utils/time');
     const body = req.body || {};
     const deviceId = body.device_id;
-    const timestamp = body.timestamp;
-    const weights = body.weights;
-    if (!deviceId || timestamp == null || !weights) {
-      return res.status(400).json({ code: 400, message: '缺少 device_id、timestamp 或 weights' });
+    const weightG = body.weight_g;
+    if (!deviceId || typeof deviceId !== 'string') {
+      return res.status(400).json({ error: 'invalid request body' });
     }
-    await processTelemetry(deviceId, timestamp, weights);
-    res.status(200).end();
+    if (weightG == null || (typeof weightG !== 'number' && typeof weightG !== 'string')) {
+      return res.status(400).json({ error: 'invalid request body' });
+    }
+    const w = Number(weightG);
+    if (!Number.isFinite(w)) {
+      return res.status(400).json({ error: 'invalid request body' });
+    }
+    let tsUnix = Math.floor(Date.now() / 1000);
+    if (body.timestamp != null && body.timestamp !== '') {
+      const parsed = parseToUnixSeconds(body.timestamp);
+      if (!parsed.ok) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      tsUnix = parsed.unix;
+    }
+    const result = await processTelemetry(deviceId, tsUnix, w);
+    res.status(200).json({
+      device_id: deviceId,
+      previous_state: result.previous_state,
+      current_state: result.current_state,
+      timestamp: result.timestamp
+    });
   } catch (err) {
     console.error('[telemetry]', err);
-    res.status(500).json({ code: 500, message: err.message });
+    res.status(500).json({ error: 'process telemetry failed' });
   }
 });
 
@@ -197,23 +239,21 @@ app.delete('/api/v1/devices/bindings/:device_id', async (req, res) => {
   }
 });
 
-// ---------- 规范：GET /meals、GET /meals/:meal_id、GET /meals/:meal_id/trajectory ----------
-
-/** 历史用餐列表（游标分页）GET /api/v1/meals?user_id=&cursor=&limit= */
+/** 历史用餐列表（游标分页）GET /api/v1/meals?cursor=&limit= */
 app.get('/api/v1/meals', async (req, res) => {
   try {
     const { listMeals } = require('./services/mealsService');
-    const userId = Number(req.query.user_id);
-    if (!userId) {
-      return res.status(400).json({ code: 400, message: '缺少 user_id' });
-    }
     const cursor = req.query.cursor;
     const limit = req.query.limit;
-    const result = await listMeals(userId, cursor, limit);
+    const result = await listMeals(cursor, limit);
     res.json(result);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ code: 500, message: err.message });
+    const isCursorError = err.message && (err.message.includes('RFC3339') || err.message.includes('unix seconds'));
+    if (isCursorError) {
+      return res.status(400).json({ error: 'cursor must be RFC3339 or unix seconds' });
+    }
+    res.status(500).json({ error: 'list meals failed' });
   }
 });
 
@@ -221,14 +261,31 @@ app.get('/api/v1/meals', async (req, res) => {
 app.get('/api/v1/meals/:meal_id/trajectory', async (req, res) => {
   try {
     const { getMealTrajectory } = require('./services/mealsService');
+    const { parseToUnixSeconds } = require('./utils/time');
     const mealId = req.params.meal_id;
-    const lastTimestamp = req.query.last_timestamp;
+    let lastTimestamp = req.query.last_timestamp;
     const sampleInterval = req.query.sample_interval;
+    if (lastTimestamp != null && lastTimestamp !== '') {
+      const parsed = parseToUnixSeconds(lastTimestamp);
+      if (!parsed.ok) {
+        return res.status(400).json({ error: 'last_timestamp must be RFC3339 or unix seconds' });
+      }
+    }
+    if (sampleInterval != null && sampleInterval !== '') {
+      const n = Number(sampleInterval);
+      if (!Number.isInteger(n) || n < 1) {
+        return res.status(400).json({ error: 'sample_interval must be a positive integer' });
+      }
+    }
     const result = await getMealTrajectory(mealId, lastTimestamp, sampleInterval);
     res.json(result);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ code: 500, message: err.message });
+    const isParamError = err.message && (err.message.includes('RFC3339') || err.message.includes('unix seconds') || err.message.includes('positive integer'));
+    if (isParamError) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'get meal trajectory failed' });
   }
 });
 
@@ -239,12 +296,12 @@ app.get('/api/v1/meals/:meal_id', async (req, res) => {
     const mealId = req.params.meal_id;
     const detail = await getMealDetail(mealId);
     if (!detail) {
-      return res.status(404).json({ code: 404, message: '未找到该用餐记录' });
+      return res.status(404).json({ error: 'meal not found' });
     }
     res.json(detail);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ code: 500, message: err.message });
+    res.status(500).json({ error: 'get meal failed' });
   }
 });
 

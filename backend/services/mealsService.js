@@ -1,24 +1,33 @@
 /**
- * 智能餐盒用餐记录与轨迹（规范：GET /meals、GET /meals/:meal_id、GET /meals/:meal_id/trajectory）
+ * 智能餐盒用餐记录与轨迹（新 API：items、RFC3339、weight_g 单值）
  * @module services/mealsService
  */
 
 const db = require('../config/db');
+const { parseToUnixSeconds, unixToRFC3339 } = require('../utils/time');
+
+const DEFAULT_LIMIT = 20;
 
 /**
- * 游标分页获取用户历史用餐列表
- * @param {number} userId - 用户 ID
- * @param {number} [cursor] - 上一页最后一条的 start_time（不传则首页）
- * @param {number} [limit=20] - 每页条数
- * @returns {Promise<{ data: Array<{ meal_id: string, start_time: number, total_served_g: number }>, pagination: { next_cursor: number|null, has_more: boolean } }>}
+ * 游标分页获取历史用餐列表（新 API：仅 cursor，返回 items + next_cursor）
+ * @param {string} [cursor] - RFC3339 或 Unix 秒字符串，不传则首页
+ * @param {number} [limit]
+ * @returns {Promise<{ items: Array<{ meal_id, user_id, start_time, duration_minutes, total_served_g, total_leftover_g }>, next_cursor: string }>}
  */
-async function listMeals(userId, cursor, limit = 20) {
-  const limitNum = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  let sql = 'SELECT meal_id, start_time, total_served_g FROM Lunchbox_Meals WHERE user_id = ?';
-  const params = [userId];
-  if (cursor != null && cursor !== '') {
+async function listMeals(cursor, limit = DEFAULT_LIMIT) {
+  const limitNum = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), 100);
+  let cursorUnix = null;
+  if (cursor != null && String(cursor).trim() !== '') {
+    const parsed = parseToUnixSeconds(cursor);
+    if (!parsed.ok) throw new Error(parsed.error);
+    cursorUnix = parsed.unix;
+  }
+
+  let sql = 'SELECT meal_id, user_id, start_time, duration_minutes, total_served_g, total_leftover_g FROM Lunchbox_Meals WHERE 1=1';
+  const params = [];
+  if (cursorUnix != null) {
     sql += ' AND start_time < ?';
-    params.push(Number(cursor));
+    params.push(cursorUnix);
   }
   sql += ' ORDER BY start_time DESC LIMIT ?';
   params.push(limitNum + 1);
@@ -27,58 +36,63 @@ async function listMeals(userId, cursor, limit = 20) {
   const list = Array.isArray(rows) ? rows : [];
   const hasMore = list.length > limitNum;
   const slice = hasMore ? list.slice(0, limitNum) : list;
-  const nextCursor = slice.length > 0 ? Number(slice[slice.length - 1].start_time) : null;
+  const nextCursor = slice.length > 0 ? unixToRFC3339(Number(slice[slice.length - 1].start_time)) : '';
 
-  const data = slice.map((r) => ({
+  const items = slice.map((r) => ({
     meal_id: String(r.meal_id),
-    start_time: Number(r.start_time),
-    total_served_g: Number(r.total_served_g) || 0
+    user_id: String(r.user_id),
+    start_time: unixToRFC3339(Number(r.start_time)),
+    duration_minutes: r.duration_minutes != null ? Number(r.duration_minutes) : 0,
+    total_served_g: Number(r.total_served_g) || 0,
+    total_leftover_g: Number(r.total_leftover_g) ?? 0
   }));
 
   return {
-    data,
-    pagination: {
-      next_cursor: hasMore ? nextCursor : null,
-      has_more: hasMore
-    }
+    items,
+    next_cursor: hasMore ? nextCursor : ''
   };
 }
 
 /**
- * 获取单次用餐详情（O(1) 主键读取）
+ * 获取单次用餐详情（新 API：user_id、start_time RFC3339）
  * @param {string} mealId
- * @returns {Promise<{ meal_id: string, duration_minutes: number, total_served_g: number, total_leftover_g: number, total_intake_g: number } | null>}
+ * @returns {Promise<{ meal_id, user_id, start_time, duration_minutes, total_served_g, total_leftover_g } | null>}
  */
 async function getMealDetail(mealId) {
   const rows = await db.query(
-    'SELECT meal_id, duration_minutes, total_served_g, total_leftover_g, total_intake_g FROM Lunchbox_Meals WHERE meal_id = ? LIMIT 1',
+    'SELECT meal_id, user_id, start_time, duration_minutes, total_served_g, total_leftover_g FROM Lunchbox_Meals WHERE meal_id = ? LIMIT 1',
     [mealId]
   );
   const r = Array.isArray(rows) && rows[0] ? rows[0] : null;
   if (!r) return null;
   return {
     meal_id: String(r.meal_id),
+    user_id: String(r.user_id),
+    start_time: unixToRFC3339(Number(r.start_time)),
     duration_minutes: r.duration_minutes != null ? Number(r.duration_minutes) : 0,
     total_served_g: Number(r.total_served_g) || 0,
-    total_leftover_g: Number(r.total_leftover_g) ?? 0,
-    total_intake_g: Number(r.total_intake_g) ?? 0
+    total_leftover_g: Number(r.total_leftover_g) ?? 0
   };
 }
 
 /**
- * 获取就餐时序轨迹（全量或增量，可选降采样）
+ * 获取就餐时序轨迹（新 API：items[{ timestamp, weight_g }], last_timestamp）
  * @param {string} mealId
- * @param {number} [lastTimestamp] - 增量游标，不传则全量
+ * @param {string} [lastTimestamp] - RFC3339 或 Unix 秒字符串，增量游标
  * @param {number} [sampleInterval] - 降采样间隔（秒）
- * @returns {Promise<{ meal_id: string, query_mode: 'historical'|'incremental', points: Array<{ timestamp: number, weights: object }> }>}
+ * @returns {Promise<{ meal_id, items: Array<{ timestamp, weight_g }>, last_timestamp: string }>}
  */
 async function getMealTrajectory(mealId, lastTimestamp, sampleInterval) {
-  const isIncremental = lastTimestamp != null && lastTimestamp !== '';
-  const queryMode = isIncremental ? 'incremental' : 'historical';
-  const ts = isIncremental ? Number(lastTimestamp) : null;
+  const isIncremental = lastTimestamp != null && String(lastTimestamp).trim() !== '';
+  let tsUnix = null;
+  if (isIncremental) {
+    const parsed = parseToUnixSeconds(lastTimestamp);
+    if (!parsed.ok) throw new Error(parsed.error);
+    tsUnix = parsed.unix;
+  }
   const interval = sampleInterval != null && sampleInterval !== '' ? Math.max(1, Number(sampleInterval)) : null;
 
-  let points = [];
+  let items = [];
   if (interval != null && interval > 0 && !isIncremental) {
     const rows = await db.query(
       `SELECT timestamp, grid_1, grid_2, grid_3, grid_4 FROM Meal_Curve_Data WHERE meal_id = ? ORDER BY timestamp ASC`,
@@ -89,63 +103,48 @@ async function getMealTrajectory(mealId, lastTimestamp, sampleInterval) {
     for (const r of raw) {
       const t = Number(r.timestamp);
       const key = Math.floor(t / interval) * interval;
-      if (!bucket.has(key)) {
-        bucket.set(key, { sum: { g1: 0, g2: 0, g3: 0, g4: 0 }, n: 0 });
-      }
+      const w = (Number(r.grid_1) || 0) + (Number(r.grid_2) || 0) + (Number(r.grid_3) || 0) + (Number(r.grid_4) || 0);
+      if (!bucket.has(key)) bucket.set(key, { sum: 0, n: 0 });
       const b = bucket.get(key);
-      b.sum.g1 += Number(r.grid_1) || 0;
-      b.sum.g2 += Number(r.grid_2) || 0;
-      b.sum.g3 += Number(r.grid_3) || 0;
-      b.sum.g4 += Number(r.grid_4) || 0;
+      b.sum += w;
       b.n += 1;
     }
-    points = Array.from(bucket.entries())
+    items = Array.from(bucket.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([timestamp, v]) => ({
-        timestamp,
-        weights: {
-          grid_1: v.n ? v.sum.g1 / v.n : 0,
-          grid_2: v.n ? v.sum.g2 / v.n : 0,
-          grid_3: v.n ? v.sum.g3 / v.n : 0,
-          grid_4: v.n ? v.sum.g4 / v.n : 0
-        }
+      .map(([t, v]) => ({
+        timestamp: unixToRFC3339(t),
+        weight_g: v.n ? Math.round(v.sum / v.n) : 0
       }));
   } else if (isIncremental) {
     const rows = await db.query(
       'SELECT timestamp, grid_1, grid_2, grid_3, grid_4 FROM Meal_Curve_Data WHERE meal_id = ? AND timestamp > ? ORDER BY timestamp ASC',
-      [mealId, ts]
+      [mealId, tsUnix]
     );
     const raw = Array.isArray(rows) ? rows : [];
-    points = raw.map((r) => ({
-      timestamp: Number(r.timestamp),
-      weights: {
-        grid_1: Number(r.grid_1) ?? 0,
-        grid_2: Number(r.grid_2) ?? 0,
-        grid_3: Number(r.grid_3) ?? 0,
-        grid_4: Number(r.grid_4) ?? 0
-      }
-    }));
+    items = raw.map((r) => {
+      const t = Number(r.timestamp);
+      const w = (Number(r.grid_1) || 0) + (Number(r.grid_2) || 0) + (Number(r.grid_3) || 0) + (Number(r.grid_4) || 0);
+      return { timestamp: unixToRFC3339(t), weight_g: Math.round(w) };
+    });
   } else {
     const rows = await db.query(
       'SELECT timestamp, grid_1, grid_2, grid_3, grid_4 FROM Meal_Curve_Data WHERE meal_id = ? ORDER BY timestamp ASC',
       [mealId]
     );
     const raw = Array.isArray(rows) ? rows : [];
-    points = raw.map((r) => ({
-      timestamp: Number(r.timestamp),
-      weights: {
-        grid_1: Number(r.grid_1) ?? 0,
-        grid_2: Number(r.grid_2) ?? 0,
-        grid_3: Number(r.grid_3) ?? 0,
-        grid_4: Number(r.grid_4) ?? 0
-      }
-    }));
+    items = raw.map((r) => {
+      const t = Number(r.timestamp);
+      const w = (Number(r.grid_1) || 0) + (Number(r.grid_2) || 0) + (Number(r.grid_3) || 0) + (Number(r.grid_4) || 0);
+      return { timestamp: unixToRFC3339(t), weight_g: Math.round(w) };
+    });
   }
+
+  const lastTimestampStr = items.length > 0 ? items[items.length - 1].timestamp : '';
 
   return {
     meal_id: String(mealId),
-    query_mode: queryMode,
-    points
+    items,
+    last_timestamp: lastTimestampStr
   };
 }
 

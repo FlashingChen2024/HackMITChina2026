@@ -1,13 +1,14 @@
 /**
- * 智能餐盒遥测处理与状态机（方案 A Step 3）
+ * 智能餐盒遥测处理与状态机（新 API：weight_g 单值，返回 state）
  * 按 device_id 维护 IDLE → SERVING → EATING → IDLE，写 Lunchbox_Meals / Meal_Curve_Data，结算时同步 Meal_Records
  * @module services/telemetryService
  */
 
 const db = require('../config/db');
 const { getUserIdByDeviceId } = require('./deviceBindingService');
+const { unixToRFC3339 } = require('../utils/time');
 
-/** 状态机阈值（与规范一致） */
+/** 状态机阈值 */
 const THRESHOLD = {
   DEADBAND_G: 5,
   SERVING_DELTA_G: 50,
@@ -18,28 +19,8 @@ const THRESHOLD = {
   SETTLE_STABLE_DURATION_S: 600
 };
 
-/** 按 device_id 存储状态（内存，重启丢失） */
 const deviceStates = new Map();
 
-/**
- * 从 weights 对象计算总重（克）
- * @param {{ grid_1?: number, grid_2?: number, grid_3?: number, grid_4?: number }} weights
- * @returns {number}
- */
-function totalWeight(weights) {
-  if (!weights || typeof weights !== 'object') return 0;
-  const g1 = Number(weights.grid_1) || 0;
-  const g2 = Number(weights.grid_2) || 0;
-  const g3 = Number(weights.grid_3) || 0;
-  const g4 = Number(weights.grid_4) || 0;
-  return g1 + g2 + g3 + g4;
-}
-
-/**
- * 获取或初始化设备状态
- * @param {string} deviceId
- * @returns {{ state: string, last_total_weight: number, last_timestamp: number, serving_start_time?: number, eating_start_time?: number, eating_served_weight?: number, current_meal_id?: string, stable_since_timestamp?: number, non_increase_since?: number }}
- */
 function getOrInitState(deviceId) {
   let s = deviceStates.get(deviceId);
   if (!s) {
@@ -53,16 +34,8 @@ function getOrInitState(deviceId) {
   return s;
 }
 
-/**
- * 结算：更新 Lunchbox_Meals，同步 Meal_Records，重置状态为 IDLE
- * @param {string} deviceId
- * @param {string} mealId
- * @param {number} totalLeftoverG
- * @param {number} endTimestamp
- */
 async function settleMeal(deviceId, mealId, totalLeftoverG, endTimestamp) {
   const userId = await getUserIdByDeviceId(deviceId) || 0;
-
   const rows = await db.query(
     'SELECT start_time, total_served_g FROM Lunchbox_Meals WHERE meal_id = ? LIMIT 1',
     [mealId]
@@ -110,7 +83,6 @@ async function settleMeal(deviceId, mealId, totalLeftoverG, endTimestamp) {
   }
 }
 
-/** 检查表是否有某列（用于兼容未执行 007 迁移的情况） */
 async function hasColumn(tableName, columnName) {
   try {
     const rows = await db.query(
@@ -124,27 +96,33 @@ async function hasColumn(tableName, columnName) {
 }
 
 /**
- * 处理单条遥测上报（规范：POST /api/v1/hardware/telemetry body）
+ * 处理单条遥测（新 API：weight_g 单值）
  * @param {string} deviceId
- * @param {number} timestamp - Unix 秒
- * @param {{ grid_1?: number, grid_2?: number, grid_3?: number, grid_4?: number }} weights
+ * @param {number} timestampUnix - Unix 秒
+ * @param {number} weightG - 当前总重量（克）
+ * @returns {Promise<{ previous_state: string, current_state: string, timestamp: string }>} timestamp 为 RFC3339
  */
-async function processTelemetry(deviceId, timestamp, weights) {
-  if (!deviceId || typeof deviceId !== 'string') return;
-  const ts = Number(timestamp) || 0;
-  const w = totalWeight(weights || {});
+async function processTelemetry(deviceId, timestampUnix, weightG) {
+  const ts = Number(timestampUnix) || 0;
+  const w = Number(weightG);
+  if (!Number.isFinite(w)) {
+    throw new Error('weight_g must be a number');
+  }
   const s = getOrInitState(deviceId);
+  const previousState = s.state;
 
   if (s.state === 'IDLE') {
     const deltaW = s.last_timestamp > 0 ? w - s.last_total_weight : 0;
-    if (s.last_timestamp > 0 && Math.abs(deltaW) < THRESHOLD.DEADBAND_G) return;
+    if (s.last_timestamp > 0 && Math.abs(deltaW) < THRESHOLD.DEADBAND_G) {
+      return { previous_state: previousState, current_state: s.state, timestamp: unixToRFC3339(ts) };
+    }
     if (s.last_timestamp > 0 && deltaW > THRESHOLD.SERVING_DELTA_G && (ts - s.last_timestamp) <= THRESHOLD.SERVING_TIME_WINDOW_S) {
       s.state = 'SERVING';
       s.serving_start_time = ts;
     }
     s.last_total_weight = w;
     s.last_timestamp = ts;
-    return;
+    return { previous_state: previousState, current_state: s.state, timestamp: unixToRFC3339(ts) };
   }
 
   if (s.state === 'SERVING') {
@@ -169,43 +147,41 @@ async function processTelemetry(deviceId, timestamp, weights) {
     }
     s.last_total_weight = w;
     s.last_timestamp = ts;
-    return;
+    return { previous_state: previousState, current_state: s.state, timestamp: unixToRFC3339(ts) };
   }
 
   if (s.state === 'EATING') {
     if (s.current_meal_id) {
-      const g1 = Number(weights?.grid_1) ?? 0;
-      const g2 = Number(weights?.grid_2) ?? 0;
-      const g3 = Number(weights?.grid_3) ?? 0;
-      const g4 = Number(weights?.grid_4) ?? 0;
       await db.query(
-        `INSERT INTO Meal_Curve_Data (meal_id, timestamp, grid_1, grid_2, grid_3, grid_4) VALUES (?, ?, ?, ?, ?, ?)`,
-        [s.current_meal_id, ts, g1, g2, g3, g4]
+        `INSERT INTO Meal_Curve_Data (meal_id, timestamp, grid_1, grid_2, grid_3, grid_4) VALUES (?, ?, ?, 0, 0, 0)`,
+        [s.current_meal_id, ts, w]
       );
     }
 
     const deltaW = w - s.last_total_weight;
     if (w < THRESHOLD.SETTLE_WEIGHT_G) {
       await settleMeal(deviceId, s.current_meal_id, w, ts);
-      return;
+      return { previous_state: previousState, current_state: 'IDLE', timestamp: unixToRFC3339(ts) };
     }
     if (Math.abs(deltaW) < THRESHOLD.SETTLE_STABLE_DELTA_G) {
       if (s.stable_since_timestamp == null) s.stable_since_timestamp = ts;
       else if ((ts - s.stable_since_timestamp) >= THRESHOLD.SETTLE_STABLE_DURATION_S) {
         await settleMeal(deviceId, s.current_meal_id, w, ts);
-        return;
+        return { previous_state: previousState, current_state: 'IDLE', timestamp: unixToRFC3339(ts) };
       }
     } else {
       s.stable_since_timestamp = undefined;
     }
     s.last_total_weight = w;
     s.last_timestamp = ts;
+    return { previous_state: previousState, current_state: s.state, timestamp: unixToRFC3339(ts) };
   }
+
+  return { previous_state: previousState, current_state: s.state, timestamp: unixToRFC3339(ts) };
 }
 
 module.exports = {
   processTelemetry,
-  totalWeight,
   getOrInitState,
   deviceStates,
   THRESHOLD
