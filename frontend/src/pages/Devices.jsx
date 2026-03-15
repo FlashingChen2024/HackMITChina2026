@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { listBindings, bind, unbind } from '../api/devices';
 
 export default function Devices() {
-  const [user_id, setUser_id] = useState(1);
   const [device_id, setDevice_id] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -13,7 +12,7 @@ export default function Devices() {
     setError(null);
     setList([]);
     try {
-      const res = await listBindings(user_id);
+      const res = await listBindings();
       setList(res.data || []);
     } catch (e) {
       setError(e.message);
@@ -28,7 +27,7 @@ export default function Devices() {
     setLoading(true);
     setError(null);
     try {
-      await bind(device_id.trim(), user_id);
+      await bind(device_id.trim());
       setDevice_id('');
       loadList();
     } catch (e) {
@@ -57,8 +56,6 @@ export default function Devices() {
       <div className="card">
         <h2>设备管理</h2>
         <div className="form-row">
-          <label>用户 ID</label>
-          <input type="number" min="1" value={user_id} onChange={e => setUser_id(Number(e.target.value) || 1)} />
           <button type="button" className="btn" onClick={loadList} disabled={loading}>查询已绑定设备</button>
         </div>
         <form className="form-row" onSubmit={handleBind}>

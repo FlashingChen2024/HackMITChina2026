@@ -1,15 +1,26 @@
 /**
- * 统一请求封装：baseURL、JSON、错误处理
+ * v4.0 统一请求：baseURL、JSON、鉴权（除 /auth 外自动带 Bearer Token）
  */
 
 const BASE = import.meta.env.VITE_API_BASE || '';
 
+export function getToken() {
+  return localStorage.getItem('token') || '';
+}
+
+export function setToken(token) {
+  if (token) localStorage.setItem('token', token);
+  else localStorage.removeItem('token');
+}
+
 export async function request(path, options = {}) {
   const url = path.startsWith('http') ? path : `${BASE}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers }
-  });
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const token = getToken();
+  if (token && !path.includes('/auth/')) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(url, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.message || data.error || `HTTP ${res.status}`);

@@ -9,12 +9,19 @@
     "migrate": "node database/runMigrations.js",
     "test": "node --test backend/services/dietSummaryService.test.js backend/services/promptService.test.js backend/services/diagnosisService.test.js backend/services/aiAnalysisService.test.js"
   },
-  "keywords": ["diet", "tracking", "ai", "mysql"],
+  "keywords": [
+    "diet",
+    "tracking",
+    "ai",
+    "mysql"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.6.5",
     "node-cron": "^3.0.3",
     "openai": "^4.52.0"

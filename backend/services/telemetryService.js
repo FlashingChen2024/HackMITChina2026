@@ -1,5 +1,5 @@
 /**
- * 智能餐盒遥测处理与状态机（新 API：weight_g 单值，返回 state）
+ * v4.0 遥测：weights 四格，FSM 防抖与平滑
  * 按 device_id 维护 IDLE → SERVING → EATING → IDLE，写 Lunchbox_Meals / Meal_Curve_Data，结算时同步 Meal_Records
  * @module services/telemetryService
  */
@@ -8,7 +8,6 @@ const db = require('../config/db');
 const { getUserIdByDeviceId } = require('./deviceBindingService');
 const { unixToRFC3339 } = require('../utils/time');
 
-/** 状态机阈值 */
 const THRESHOLD = {
   DEADBAND_G: 5,
   SERVING_DELTA_G: 50,
@@ -21,14 +20,15 @@ const THRESHOLD = {
 
 const deviceStates = new Map();
 
+function totalWeight(weights) {
+  if (!weights || typeof weights !== 'object') return 0;
+  return (Number(weights.grid_1) || 0) + (Number(weights.grid_2) || 0) + (Number(weights.grid_3) || 0) + (Number(weights.grid_4) || 0);
+}
+
 function getOrInitState(deviceId) {
   let s = deviceStates.get(deviceId);
   if (!s) {
-    s = {
-      state: 'IDLE',
-      last_total_weight: 0,
-      last_timestamp: 0
-    };
+    s = { state: 'IDLE', last_total_weight: 0, last_timestamp: 0 };
     deviceStates.set(deviceId, s);
   }
   return s;
@@ -96,18 +96,15 @@ async function hasColumn(tableName, columnName) {
 }
 
 /**
- * 处理单条遥测（新 API：weight_g 单值）
+ * v4.0：处理单条遥测（weights 四格）
  * @param {string} deviceId
  * @param {number} timestampUnix - Unix 秒
- * @param {number} weightG - 当前总重量（克）
- * @returns {Promise<{ previous_state: string, current_state: string, timestamp: string }>} timestamp 为 RFC3339
+ * @param {{ grid_1?: number, grid_2?: number, grid_3?: number, grid_4?: number }} weights
+ * @returns {Promise<{ previous_state: string, current_state: string, timestamp: string }>}
  */
-async function processTelemetry(deviceId, timestampUnix, weightG) {
+async function processTelemetry(deviceId, timestampUnix, weights) {
   const ts = Number(timestampUnix) || 0;
-  const w = Number(weightG);
-  if (!Number.isFinite(w)) {
-    throw new Error('weight_g must be a number');
-  }
+  const w = totalWeight(weights || {});
   const s = getOrInitState(deviceId);
   const previousState = s.state;
 
@@ -151,10 +148,11 @@ async function processTelemetry(deviceId, timestampUnix, weightG) {
   }
 
   if (s.state === 'EATING') {
-    if (s.current_meal_id) {
+    if (s.current_meal_id && weights) {
+      const g1 = Number(weights.grid_1) ?? 0, g2 = Number(weights.grid_2) ?? 0, g3 = Number(weights.grid_3) ?? 0, g4 = Number(weights.grid_4) ?? 0;
       await db.query(
-        `INSERT INTO Meal_Curve_Data (meal_id, timestamp, grid_1, grid_2, grid_3, grid_4) VALUES (?, ?, ?, 0, 0, 0)`,
-        [s.current_meal_id, ts, w]
+        `INSERT INTO Meal_Curve_Data (meal_id, timestamp, grid_1, grid_2, grid_3, grid_4) VALUES (?, ?, ?, ?, ?, ?)`,
+        [s.current_meal_id, ts, g1, g2, g3, g4]
       );
     }
 
@@ -182,6 +180,7 @@ async function processTelemetry(deviceId, timestampUnix, weightG) {
 
 module.exports = {
   processTelemetry,
+  totalWeight,
   getOrInitState,
   deviceStates,
   THRESHOLD
