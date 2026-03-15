@@ -5,9 +5,11 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"kxyz-backend/internal/model"
+	"kxyz-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -15,7 +17,8 @@ import (
 
 type MealQueryService interface {
 	ListMeals(ctx context.Context, cursor *time.Time) ([]model.Meal, error)
-	GetMealByID(ctx context.Context, mealID string) (model.Meal, error)
+	GetMealDetail(ctx context.Context, mealID string) (model.Meal, []model.MealGrid, error)
+	AttachFoods(ctx context.Context, mealID string, grids []model.MealGrid) error
 	GetMealTrajectory(ctx context.Context, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error)
 }
 
@@ -23,18 +26,51 @@ type MealsHandler struct {
 	service MealQueryService
 }
 
-type mealResponse struct {
-	MealID          string `json:"meal_id"`
-	UserID          string `json:"user_id"`
-	StartTime       string `json:"start_time"`
-	DurationMinutes int    `json:"duration_minutes"`
-	TotalServedG    int    `json:"total_served_g"`
-	TotalLeftoverG  int    `json:"total_leftover_g"`
+type mealListItemResponse struct {
+	MealID          string  `json:"meal_id"`
+	StartTime       string  `json:"start_time"`
+	DurationMinutes int     `json:"duration_minutes"`
+	TotalMealCal    float64 `json:"total_meal_cal"`
+}
+
+type mealDetailResponse struct {
+	MealID          string                   `json:"meal_id"`
+	StartTime       string                   `json:"start_time"`
+	DurationMinutes int                      `json:"duration_minutes"`
+	TotalMealCal    float64                  `json:"total_meal_cal"`
+	GridDetails     []mealDetailGridResponse `json:"grid_details"`
+}
+
+type mealDetailGridResponse struct {
+	GridIndex    int     `json:"grid_index"`
+	FoodName     string  `json:"food_name"`
+	ServedG      int     `json:"served_g"`
+	LeftoverG    int     `json:"leftover_g"`
+	IntakeG      int     `json:"intake_g"`
+	TotalCal     float64 `json:"total_cal"`
+	SpeedGPerMin float64 `json:"speed_g_per_min"`
 }
 
 type trajectoryPointResponse struct {
-	Timestamp string `json:"timestamp"`
-	WeightG   int    `json:"weight_g"`
+	Timestamp string                    `json:"timestamp"`
+	Weights   trajectoryWeightsResponse `json:"weights"`
+}
+
+type trajectoryWeightsResponse struct {
+	Grid1 float64 `json:"grid_1"`
+	Grid2 float64 `json:"grid_2"`
+	Grid3 float64 `json:"grid_3"`
+	Grid4 float64 `json:"grid_4"`
+}
+
+type mealFoodsRequest struct {
+	Grids []mealFoodGridRequest `json:"grids" binding:"required"`
+}
+
+type mealFoodGridRequest struct {
+	GridIndex      int     `json:"grid_index"`
+	FoodName       string  `json:"food_name"`
+	UnitCalPer100G float64 `json:"unit_cal_per_100g"`
 }
 
 func NewMealsHandler(service MealQueryService) *MealsHandler {
@@ -54,10 +90,20 @@ func (h *MealsHandler) List(c *gin.Context) {
 		return
 	}
 
-	items := make([]mealResponse, 0, len(meals))
+	items := make([]mealListItemResponse, 0, len(meals))
 	nextCursor := ""
 	for _, meal := range meals {
-		items = append(items, toMealResponse(meal))
+		_, grids, err := h.service.GetMealDetail(c.Request.Context(), meal.MealID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list meals failed"})
+			return
+		}
+		items = append(items, mealListItemResponse{
+			MealID:          meal.MealID,
+			StartTime:       meal.StartTime.UTC().Format(time.RFC3339Nano),
+			DurationMinutes: meal.DurationMinutes,
+			TotalMealCal:    sumGridCalories(grids),
+		})
 	}
 	if len(meals) > 0 {
 		nextCursor = meals[len(meals)-1].StartTime.UTC().Format(time.RFC3339Nano)
@@ -76,7 +122,7 @@ func (h *MealsHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	meal, err := h.service.GetMealByID(c.Request.Context(), mealID)
+	meal, grids, err := h.service.GetMealDetail(c.Request.Context(), mealID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "meal not found"})
@@ -86,7 +132,61 @@ func (h *MealsHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toMealResponse(meal))
+	c.JSON(http.StatusOK, toMealDetailResponse(meal, grids))
+}
+
+func (h *MealsHandler) PutFoods(c *gin.Context) {
+	mealID := c.Param("meal_id")
+	if mealID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "meal_id is required"})
+		return
+	}
+
+	var req mealFoodsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if len(req.Grids) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "grids is required"})
+		return
+	}
+
+	grids := make([]model.MealGrid, 0, len(req.Grids))
+	for _, grid := range req.Grids {
+		if grid.GridIndex < 1 || grid.GridIndex > 4 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "grid_index must be in [1,4]"})
+			return
+		}
+		foodName := strings.TrimSpace(grid.FoodName)
+		if foodName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "food_name is required"})
+			return
+		}
+		if grid.UnitCalPer100G < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unit_cal_per_100g must be non-negative"})
+			return
+		}
+		grids = append(grids, model.MealGrid{
+			GridIndex:      grid.GridIndex,
+			FoodName:       foodName,
+			UnitCalPer100G: grid.UnitCalPer100G,
+		})
+	}
+
+	if err := h.service.AttachFoods(c.Request.Context(), mealID, grids); err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "meal not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "attach foods failed"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "食物信息挂载成功，卡路里已就绪"})
 }
 
 func (h *MealsHandler) Trajectory(c *gin.Context) {
@@ -150,23 +250,53 @@ func parseMealCursor(raw string) (*time.Time, error) {
 	return nil, strconv.ErrSyntax
 }
 
-func toMealResponse(meal model.Meal) mealResponse {
-	return mealResponse{
+func toMealDetailResponse(meal model.Meal, grids []model.MealGrid) mealDetailResponse {
+	gridDetails := make([]mealDetailGridResponse, 0, len(grids))
+	for _, grid := range grids {
+		speed := 0.0
+		if meal.DurationMinutes > 0 {
+			speed = float64(grid.IntakeG) / float64(meal.DurationMinutes)
+		}
+		gridDetails = append(gridDetails, mealDetailGridResponse{
+			GridIndex:    grid.GridIndex,
+			FoodName:     grid.FoodName,
+			ServedG:      grid.ServedG,
+			LeftoverG:    grid.LeftoverG,
+			IntakeG:      grid.IntakeG,
+			TotalCal:     grid.TotalCal,
+			SpeedGPerMin: speed,
+		})
+	}
+
+	return mealDetailResponse{
 		MealID:          meal.MealID,
-		UserID:          meal.UserID,
 		StartTime:       meal.StartTime.UTC().Format(time.RFC3339Nano),
 		DurationMinutes: meal.DurationMinutes,
-		TotalServedG:    meal.TotalServedG,
-		TotalLeftoverG:  meal.TotalLeftoverG,
+		TotalMealCal:    sumGridCalories(grids),
+		GridDetails:     gridDetails,
 	}
+}
+
+func sumGridCalories(grids []model.MealGrid) float64 {
+	total := 0.0
+	for _, grid := range grids {
+		total += grid.TotalCal
+	}
+	return total
 }
 
 func toTrajectoryResponses(points []model.MealCurveData) []trajectoryPointResponse {
 	items := make([]trajectoryPointResponse, 0, len(points))
 	for _, point := range points {
+		weights := pointToTrajectoryWeights(point)
 		items = append(items, trajectoryPointResponse{
 			Timestamp: point.Timestamp.UTC().Format(time.RFC3339Nano),
-			WeightG:   point.WeightG,
+			Weights: trajectoryWeightsResponse{
+				Grid1: float64(weights[0]),
+				Grid2: float64(weights[1]),
+				Grid3: float64(weights[2]),
+				Grid4: float64(weights[3]),
+			},
 		})
 	}
 	return items
@@ -193,16 +323,28 @@ func downsampleTrajectory(points []model.MealCurveData, intervalSeconds int) []m
 
 	currentBucket := points[0].Timestamp.UTC().Unix() / bucketSize
 	sum := 0
+	sumGrid1 := 0
+	sumGrid2 := 0
+	sumGrid3 := 0
+	sumGrid4 := 0
 	count := 0
 
 	flush := func(bucket int64) {
 		if count == 0 {
 			return
 		}
+		avgGrid1 := sumGrid1 / count
+		avgGrid2 := sumGrid2 / count
+		avgGrid3 := sumGrid3 / count
+		avgGrid4 := sumGrid4 / count
 		result = append(result, model.MealCurveData{
 			MealID:    points[0].MealID,
 			Timestamp: time.Unix(bucket*bucketSize, 0).UTC(),
 			WeightG:   sum / count,
+			Grid1G:    avgGrid1,
+			Grid2G:    avgGrid2,
+			Grid3G:    avgGrid3,
+			Grid4G:    avgGrid4,
 		})
 	}
 
@@ -212,12 +354,29 @@ func downsampleTrajectory(points []model.MealCurveData, intervalSeconds int) []m
 			flush(currentBucket)
 			currentBucket = bucket
 			sum = 0
+			sumGrid1 = 0
+			sumGrid2 = 0
+			sumGrid3 = 0
+			sumGrid4 = 0
 			count = 0
 		}
 		sum += point.WeightG
+		weights := pointToTrajectoryWeights(point)
+		sumGrid1 += weights[0]
+		sumGrid2 += weights[1]
+		sumGrid3 += weights[2]
+		sumGrid4 += weights[3]
 		count++
 	}
 	flush(currentBucket)
 
 	return result
+}
+
+func pointToTrajectoryWeights(point model.MealCurveData) [4]int {
+	grids := [4]int{point.Grid1G, point.Grid2G, point.Grid3G, point.Grid4G}
+	if grids[0]+grids[1]+grids[2]+grids[3] == 0 && point.WeightG > 0 {
+		grids[0] = point.WeightG
+	}
+	return grids
 }

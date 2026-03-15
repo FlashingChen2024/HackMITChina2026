@@ -35,7 +35,15 @@ func NewMySQL(ctx context.Context, dsn string) (*gorm.DB, error) {
 }
 
 func AutoMigrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&model.Meal{}, &model.MealCurveData{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.Meal{},
+		&model.MealCurveData{},
+		&model.MealGrid{},
+		&model.User{},
+		&model.DeviceBinding{},
+		&model.Community{},
+		&model.CommunityMember{},
+	); err != nil {
 		return fmt.Errorf("auto migrate models: %w", err)
 	}
 	return nil

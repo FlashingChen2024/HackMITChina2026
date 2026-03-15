@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"kxyz-backend/internal/api"
 	"kxyz-backend/internal/model"
+	"kxyz-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -19,11 +21,17 @@ type fakeMealQueryService struct {
 	meals      []model.Meal
 	trajectory []model.MealCurveData
 	meal       model.Meal
-	listErr    error
-	detailErr  error
-	trajErr    error
-	lastCursor *time.Time
-	lastTS     *time.Time
+	grids      []model.MealGrid
+
+	listErr   error
+	detailErr error
+	trajErr   error
+	attachErr error
+
+	lastCursor      *time.Time
+	lastTS          *time.Time
+	lastAttachMeal  string
+	lastAttachGrids []model.MealGrid
 }
 
 func (f *fakeMealQueryService) ListMeals(_ context.Context, cursor *time.Time) ([]model.Meal, error) {
@@ -31,11 +39,17 @@ func (f *fakeMealQueryService) ListMeals(_ context.Context, cursor *time.Time) (
 	return f.meals, f.listErr
 }
 
-func (f *fakeMealQueryService) GetMealByID(_ context.Context, _ string) (model.Meal, error) {
+func (f *fakeMealQueryService) GetMealDetail(_ context.Context, _ string) (model.Meal, []model.MealGrid, error) {
 	if f.detailErr != nil {
-		return model.Meal{}, f.detailErr
+		return model.Meal{}, nil, f.detailErr
 	}
-	return f.meal, nil
+	return f.meal, f.grids, nil
+}
+
+func (f *fakeMealQueryService) AttachFoods(_ context.Context, mealID string, grids []model.MealGrid) error {
+	f.lastAttachMeal = mealID
+	f.lastAttachGrids = grids
+	return f.attachErr
 }
 
 func (f *fakeMealQueryService) GetMealTrajectory(_ context.Context, _ string, lastTimestamp *time.Time) ([]model.MealCurveData, error) {
@@ -50,12 +64,12 @@ func TestMealsListReturnsNextCursor(t *testing.T) {
 	service := &fakeMealQueryService{
 		meals: []model.Meal{
 			{
-				MealID:         "meal-1",
-				StartTime:      start,
-				TotalServedG:   500,
-				TotalLeftoverG: 400,
+				MealID:    "meal-1",
+				StartTime: start,
 			},
 		},
+		meal:  model.Meal{MealID: "meal-1", StartTime: start},
+		grids: []model.MealGrid{{MealID: "meal-1", GridIndex: 1, TotalCal: 174}},
 	}
 
 	handler := api.NewMealsHandler(service)
@@ -120,6 +134,113 @@ func TestMealDetailNotFound(t *testing.T) {
 	}
 }
 
+func TestMealDetailReturnsGridDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &fakeMealQueryService{
+		meal: model.Meal{
+			MealID:          "meal-1",
+			StartTime:       time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC),
+			DurationMinutes: 25,
+		},
+		grids: []model.MealGrid{
+			{MealID: "meal-1", GridIndex: 1, FoodName: "糙米饭", ServedG: 200, LeftoverG: 50, IntakeG: 150, TotalCal: 174},
+		},
+	}
+
+	handler := api.NewMealsHandler(service)
+	router := gin.New()
+	router.GET("/api/v1/meals/:meal_id", handler.GetByID)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/meals/meal-1", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+
+	var payload struct {
+		TotalMealCal float64 `json:"total_meal_cal"`
+		GridDetails  []struct {
+			GridIndex int     `json:"grid_index"`
+			TotalCal  float64 `json:"total_cal"`
+		} `json:"grid_details"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.TotalMealCal != 174 {
+		t.Fatalf("expected total_meal_cal=174, got %v", payload.TotalMealCal)
+	}
+	if len(payload.GridDetails) != 1 || payload.GridDetails[0].GridIndex != 1 {
+		t.Fatalf("expected 1 grid detail with index=1")
+	}
+}
+
+func TestMealPutFoodsSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &fakeMealQueryService{}
+	handler := api.NewMealsHandler(service)
+	router := gin.New()
+	router.PUT("/api/v1/meals/:meal_id/foods", handler.PutFoods)
+
+	body := `{"grids":[{"grid_index":1,"food_name":"糙米饭","unit_cal_per_100g":116}]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/meals/meal-1/foods", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+	if service.lastAttachMeal != "meal-1" {
+		t.Fatalf("expected meal_id meal-1, got %s", service.lastAttachMeal)
+	}
+	if len(service.lastAttachGrids) != 1 || service.lastAttachGrids[0].GridIndex != 1 {
+		t.Fatalf("expected one grid update forwarded")
+	}
+}
+
+func TestMealPutFoodsNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &fakeMealQueryService{attachErr: gorm.ErrRecordNotFound}
+	handler := api.NewMealsHandler(service)
+	router := gin.New()
+	router.PUT("/api/v1/meals/:meal_id/foods", handler.PutFoods)
+
+	body := `{"grids":[{"grid_index":1,"food_name":"糙米饭","unit_cal_per_100g":116}]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/meals/meal-1/foods", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", resp.Code)
+	}
+}
+
+func TestMealPutFoodsBadRequestOnInvalidServiceInput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &fakeMealQueryService{attachErr: service.ErrInvalidInput}
+	handler := api.NewMealsHandler(service)
+	router := gin.New()
+	router.PUT("/api/v1/meals/:meal_id/foods", handler.PutFoods)
+
+	body := `{"grids":[{"grid_index":1,"food_name":"糙米饭","unit_cal_per_100g":116}]}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/meals/meal-1/foods", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", resp.Code)
+	}
+}
+
 func TestMealTrajectoryReturnsPoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -127,8 +248,8 @@ func TestMealTrajectoryReturnsPoints(t *testing.T) {
 	t2 := time.Date(2026, 3, 13, 10, 0, 5, 456000000, time.UTC)
 	service := &fakeMealQueryService{
 		trajectory: []model.MealCurveData{
-			{MealID: "meal-1", Timestamp: t1, WeightG: 450},
-			{MealID: "meal-1", Timestamp: t2, WeightG: 400},
+			{MealID: "meal-1", Timestamp: t1, WeightG: 450, Grid1G: 120, Grid2G: 110, Grid3G: 100, Grid4G: 120},
+			{MealID: "meal-1", Timestamp: t2, WeightG: 400, Grid1G: 100, Grid2G: 100, Grid3G: 90, Grid4G: 110},
 		},
 	}
 
@@ -146,7 +267,15 @@ func TestMealTrajectoryReturnsPoints(t *testing.T) {
 
 	var payload struct {
 		LastTimestamp string `json:"last_timestamp"`
-		Items         []any  `json:"items"`
+		Items         []struct {
+			Timestamp string `json:"timestamp"`
+			Weights   struct {
+				Grid1 float64 `json:"grid_1"`
+				Grid2 float64 `json:"grid_2"`
+				Grid3 float64 `json:"grid_3"`
+				Grid4 float64 `json:"grid_4"`
+			} `json:"weights"`
+		} `json:"items"`
 	}
 	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
@@ -154,6 +283,9 @@ func TestMealTrajectoryReturnsPoints(t *testing.T) {
 
 	if len(payload.Items) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(payload.Items))
+	}
+	if payload.Items[0].Weights.Grid1 != 120 || payload.Items[0].Weights.Grid4 != 120 {
+		t.Fatalf("expected first item grid weights to be returned, got %+v", payload.Items[0].Weights)
 	}
 	if payload.LastTimestamp != t2.Format(time.RFC3339Nano) {
 		t.Fatalf("expected last_timestamp=%s, got %s", t2.Format(time.RFC3339Nano), payload.LastTimestamp)

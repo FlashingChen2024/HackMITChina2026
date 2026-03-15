@@ -1,37 +1,20 @@
-# 📄 K-XYZ 智能餐盒 API 服务器 - 需求文档 (PRD v2.0)
+## 1. 核心目标
 
-## 1. 系统定位
+将系统的底层颗粒度从“整顿饭”下探到“每一个独立分格”。支持前端 AI 拍照识别食物挂载，实现精准卡路里计算，并落地社区大屏的全局食物均值聚合分析。
 
-本系统是一个基于 Golang 开发的高并发、无状态 RESTful API 服务器。负责接收底层 ESP32 硬件的高频时序数据，通过 Redis 维护设备的有限状态机（FSM），并利用 MySQL 持久化用户的就餐聚合数据与时序轨迹。
+## 2. 数据库实体重构规范 (GORM Models)
 
-## 2. 技术栈标准
+系统必须建立以下 6 张核心数据表以支撑新业务：
 
-* **Web 框架**: Gin (`gin-gonic/gin`)
-* **缓存与状态管理**: Redis (使用 `redis/go-redis/v9`)
-* **数据库**: MySQL 8.0+
-* **ORM**: GORM (`gorm.io/gorm`)
+1. **`users`**: `id` (UUID), `username`, `password_hash` (bcrypt).
+2. **`device_bindings`**: `device_id` (ESP32 MAC), `user_id`.
+3. **`meals`**: `meal_id`, `user_id`, `start_time`, `duration_minutes`. (注：移除了 `total_served_g`，仅保留整体会话信息)。
+4. **`meal_curve_data`**: 时序表，保存每个时间点的 `grid_1` 到 `grid_4` 重量，强依赖联合索引 `(meal_id, timestamp)`。
+5. **`meal_grids` (新增核心表)**: `id`, `meal_id`, `grid_index` (1-4), `food_name`, `unit_cal_per_100g`, `served_g`, `leftover_g`, `intake_g`, `total_cal`。
+6. **`communities` & `user_communities` (新增社区表)**: 管理圈子与用户的多对多关系。
 
-## 3. 核心业务与状态机 (FSM) 规则
+## 3. 核心流转逻辑“大手术”
 
-系统依托 Redis 的 Hash 结构维护 `device:{device_id}` 的当前状态。
-
-* **死区拦截 (Deadband)**：若总重量变化 $|\Delta W| < 5g$，直接丢弃数据，不触发任何状态逻辑。
-* **IDLE (待机)**：系统初始状态。若 $|\Delta W| > 50g$ 且持续增长，跃迁至 `SERVING`。
-* **SERVING (备餐)**：在 Redis 中维护 `temp_peak_weight`。若重量一阶导数 $\frac{dW}{dt} \le 0$ 并持续 15 秒，生成唯一 `meal_id`，将打饭量写入 MySQL，跃迁至 `EATING`。
-* **EATING (就餐)**：持续收割有效消耗点写入 MySQL 轨迹表。若出现突刺 ($W_t > W_{t-1}$)，强制单调递减 ($W_t = W_{t-1}$)。
-* **就餐结束**：若绝对重量 $< 10g$，或连续 600 秒 $|\Delta W| < 1g$。计算总摄入量与时长，更新 MySQL 主表，跃迁回 `IDLE`。
-* **异常回退 (中途加饭)**：在 `EATING` 态下突增 $> 50g$，状态强制打回 `SERVING`，准备追加打饭量。
-
-## 4. 数据库实体关系 (ER) 核心要求
-
-* **`meals` 表**: 存储 `meal_id` (主键), `user_id`, `start_time`, `duration_minutes`, `total_served_g`, `total_leftover_g`。
-* **`meal_curve_data` 表**: 存储时序点。**强制要求**建立联合索引 `idx_meal_time (meal_id, timestamp)`。
-
-## 5. 接口规范清单 (API Spec)
-
-1. `POST /api/v1/hardware/telemetry`: 硬件数据上报（驱动 FSM）。
-2. `GET /api/v1/meals`: 历史记录列表（**强制使用 `cursor` 游标分页**，废弃 limit/offset）。
-3. `GET /api/v1/meals/{meal_id}`: 单次就餐统计详情（仅读取主表）。
-4. `GET /api/v1/meals/{meal_id}/trajectory`: 轨迹查询（支持 `last_timestamp` 增量轮询与 `sample_interval` 动态降采样）。
-
----
+* **网关反向映射**：`/hardware/telemetry` 收包时，必须先查询 `device_bindings`。无绑定则丢弃；有绑定则提取 `user_id` 向下透传。
+* **FSM 结算解耦**：状态机从 `EATING -> IDLE` 结算时，不再计算总重量。必须读取 4 个格子的（最高峰值 - 最终值），算出各自的 `served_g` 和 `leftover_g`，并在 `meal_grids` 表中 `INSERT` 4 条初始化记录。
+* **卡路里延迟计算**：前端调用 `/meals/{meal_id}/foods` 时，根据前端传来的 `unit_cal_per_100g`，结合表中已有的 `intake_g`，计算出 `total_cal` 并 `UPDATE` 回 `meal_grids` 表。

@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,16 +15,36 @@ import (
 
 type TelemetryHandler struct {
 	telemetryService *service.TelemetryService
+	bindingService   TelemetryBindingResolver
+}
+
+type TelemetryBindingResolver interface {
+	ResolveUserID(ctx context.Context, deviceID string) (string, error)
+}
+
+type telemetryWeights struct {
+	Grid1 *float64 `json:"grid_1" binding:"required"`
+	Grid2 *float64 `json:"grid_2" binding:"required"`
+	Grid3 *float64 `json:"grid_3" binding:"required"`
+	Grid4 *float64 `json:"grid_4" binding:"required"`
 }
 
 type telemetryRequest struct {
-	DeviceID  string `json:"device_id" binding:"required"`
-	WeightG   *int   `json:"weight_g" binding:"required"`
-	Timestamp string `json:"timestamp"`
+	DeviceID  string           `json:"device_id" binding:"required"`
+	Weights   telemetryWeights `json:"weights" binding:"required"`
+	Timestamp string           `json:"timestamp"`
 }
 
-func NewTelemetryHandler(telemetryService *service.TelemetryService) *TelemetryHandler {
-	return &TelemetryHandler{telemetryService: telemetryService}
+var errInvalidWeights = errors.New("weights must be non-negative")
+
+func NewTelemetryHandler(
+	telemetryService *service.TelemetryService,
+	bindingService TelemetryBindingResolver,
+) *TelemetryHandler {
+	return &TelemetryHandler{
+		telemetryService: telemetryService,
+		bindingService:   bindingService,
+	}
 }
 
 func (h *TelemetryHandler) Handle(c *gin.Context) {
@@ -37,10 +60,32 @@ func (h *TelemetryHandler) Handle(c *gin.Context) {
 		return
 	}
 
+	gridWeights, err := gridWeightsFromRequest(req.Weights)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	totalWeight := gridWeights[0] + gridWeights[1] + gridWeights[2] + gridWeights[3]
+
+	userID, err := h.bindingService.ResolveUserID(c.Request.Context(), req.DeviceID)
+	if err != nil {
+		switch err {
+		case service.ErrDeviceNotBound:
+			c.Status(http.StatusOK)
+		case service.ErrInvalidInput:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "device_id is required"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "resolve device binding failed"})
+		}
+		return
+	}
+
 	result, err := h.telemetryService.Process(c.Request.Context(), service.TelemetryInput{
-		DeviceID:  req.DeviceID,
-		WeightG:   *req.WeightG,
-		Timestamp: ts,
+		DeviceID:    req.DeviceID,
+		UserID:      userID,
+		WeightG:     totalWeight,
+		GridWeights: gridWeights,
+		Timestamp:   ts,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "process telemetry failed"})
@@ -53,6 +98,18 @@ func (h *TelemetryHandler) Handle(c *gin.Context) {
 		"current_state":  result.CurrentState,
 		"timestamp":      ts.UTC().Format(time.RFC3339),
 	})
+}
+
+func gridWeightsFromRequest(weights telemetryWeights) ([4]int, error) {
+	raw := []*float64{weights.Grid1, weights.Grid2, weights.Grid3, weights.Grid4}
+	var grids [4]int
+	for i, value := range raw {
+		if value == nil || *value < 0 {
+			return [4]int{}, errInvalidWeights
+		}
+		grids[i] = int(math.Round(*value))
+	}
+	return grids, nil
 }
 
 func parseTimestamp(raw string) (time.Time, error) {

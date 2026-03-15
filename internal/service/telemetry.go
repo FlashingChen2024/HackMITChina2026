@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
+
+	"kxyz-backend/internal/model"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -19,9 +22,11 @@ const (
 )
 
 type TelemetryInput struct {
-	DeviceID  string
-	WeightG   int
-	Timestamp time.Time
+	DeviceID    string
+	UserID      string
+	WeightG     int
+	GridWeights [4]int
+	Timestamp   time.Time
 }
 
 type TelemetryResult struct {
@@ -31,14 +36,19 @@ type TelemetryResult struct {
 }
 
 type DeviceSession struct {
-	CurrentState      string
-	LastWeight        int
-	LastTimestamp     int64
-	TempPeakWeight    int
-	ServingBaseWeight int
-	ActiveMealID      string
-	ActiveMealStartTS int64
-	EatingStableTS    int64
+	CurrentState           string
+	LastWeight             int
+	LastGridWeights        [4]int
+	LastTimestamp          int64
+	TempPeakWeight         int
+	TempPeakGridWeights    [4]int
+	ServingBaseWeight      int
+	ServingBaseGridWeights [4]int
+	ServingStableTS        int64
+	ServedGridTotals       [4]int
+	ActiveMealID           string
+	ActiveMealStartTS      int64
+	EatingStableTS         int64
 }
 
 type DeviceStateStore interface {
@@ -47,27 +57,27 @@ type DeviceStateStore interface {
 }
 
 type MealPersistence interface {
-	CreateMeal(ctx context.Context, mealID string, startTime time.Time, totalServedG int) error
-	AddMealServedG(ctx context.Context, mealID string, servedIncrement int) error
-	InsertMealCurveData(ctx context.Context, mealID string, timestamp time.Time, weightG int) error
-	UpdateMealSummary(ctx context.Context, mealID string, durationMinutes int, totalLeftoverG int) error
+	CreateMeal(ctx context.Context, mealID string, userID string, startTime time.Time) error
+	InsertMealCurveData(ctx context.Context, mealID string, timestamp time.Time, weightG int, gridWeights [4]int) error
+	UpdateMealSummary(ctx context.Context, mealID string, durationMinutes int) error
+	InsertMealGrids(ctx context.Context, mealID string, grids []model.MealGrid) error
 }
 
 type noopMealPersistence struct{}
 
-func (noopMealPersistence) CreateMeal(_ context.Context, _ string, _ time.Time, _ int) error {
+func (noopMealPersistence) CreateMeal(_ context.Context, _ string, _ string, _ time.Time) error {
 	return nil
 }
 
-func (noopMealPersistence) AddMealServedG(_ context.Context, _ string, _ int) error {
+func (noopMealPersistence) InsertMealCurveData(_ context.Context, _ string, _ time.Time, _ int, _ [4]int) error {
 	return nil
 }
 
-func (noopMealPersistence) InsertMealCurveData(_ context.Context, _ string, _ time.Time, _ int) error {
+func (noopMealPersistence) UpdateMealSummary(_ context.Context, _ string, _ int) error {
 	return nil
 }
 
-func (noopMealPersistence) UpdateMealSummary(_ context.Context, _ string, _ int, _ int) error {
+func (noopMealPersistence) InsertMealGrids(_ context.Context, _ string, _ []model.MealGrid) error {
 	return nil
 }
 
@@ -114,9 +124,13 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 		session.CurrentState = StateIdle
 	}
 
+	gridWeights := resolveInputGridWeights(input)
+	inputWeight := sumGridWeights(gridWeights)
+
 	previousState := session.CurrentState
-	delta := input.WeightG - session.LastWeight
-	weightForSave := input.WeightG
+	delta := inputWeight - session.LastWeight
+	weightForSave := inputWeight
+	gridWeightsForSave := gridWeights
 
 	if session.CurrentState != StateEating && abs(delta) < 5 {
 		s.logger.Printf("[死区拦截] 不执行动作 device=%s delta=%dg", input.DeviceID, delta)
@@ -133,36 +147,59 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 			s.logger.Printf("[状态跃迁] IDLE -> SERVING device=%s", input.DeviceID)
 			session.CurrentState = StateServing
 			session.ServingBaseWeight = 0
-			session.TempPeakWeight = input.WeightG
+			session.ServingBaseGridWeights = [4]int{}
+			session.TempPeakGridWeights = gridWeights
+			session.TempPeakWeight = inputWeight
+			session.ServingStableTS = 0
 		}
 	case StateServing:
-		if input.WeightG > session.TempPeakWeight {
-			session.TempPeakWeight = input.WeightG
+		if hasGridIncrease(gridWeights, session.TempPeakGridWeights) {
+			session.TempPeakGridWeights = maxGridWeights(session.TempPeakGridWeights, gridWeights)
+			session.TempPeakWeight = sumGridWeights(session.TempPeakGridWeights)
+			session.ServingStableTS = 0
 		}
-		if delta <= 0 && session.LastTimestamp > 0 &&
-			input.Timestamp.Sub(time.Unix(session.LastTimestamp, 0)) >= 15*time.Second {
-			servedIncrement := session.TempPeakWeight - session.ServingBaseWeight
-			if servedIncrement < 0 {
-				servedIncrement = 0
-			}
+		if delta > 0 {
+			session.ServingStableTS = 0
+			break
+		}
 
+		if session.ServingStableTS == 0 {
+			if session.LastTimestamp > 0 {
+				session.ServingStableTS = session.LastTimestamp
+			} else {
+				session.ServingStableTS = input.Timestamp.Unix()
+			}
+		}
+
+		if input.Timestamp.Unix()-session.ServingStableTS >= 15 {
 			if session.ActiveMealID == "" {
 				session.ActiveMealID = newMealID(input.DeviceID, input.Timestamp)
-				if err := s.persistence.CreateMeal(ctx, session.ActiveMealID, input.Timestamp, servedIncrement); err != nil {
+				if err := s.persistence.CreateMeal(ctx, session.ActiveMealID, input.UserID, input.Timestamp); err != nil {
 					return TelemetryResult{}, fmt.Errorf("create meal: %w", err)
 				}
 				session.ActiveMealStartTS = input.Timestamp.Unix()
-			} else if servedIncrement > 0 {
-				if err := s.persistence.AddMealServedG(ctx, session.ActiveMealID, servedIncrement); err != nil {
-					return TelemetryResult{}, fmt.Errorf("add meal served amount: %w", err)
+			}
+
+			for i := 0; i < 4; i++ {
+				servedIncrement := session.TempPeakGridWeights[i] - session.ServingBaseGridWeights[i]
+				if servedIncrement < 0 {
+					servedIncrement = 0
 				}
+				session.ServedGridTotals[i] += servedIncrement
 			}
 
 			s.logger.Printf("[状态跃迁] SERVING -> EATING device=%s", input.DeviceID)
 			session.CurrentState = StateEating
+			session.ServingStableTS = 0
 
-			if input.WeightG >= 10 {
-				if err := s.persistence.InsertMealCurveData(ctx, session.ActiveMealID, input.Timestamp, input.WeightG); err != nil {
+			if inputWeight >= 10 {
+				if err := s.persistence.InsertMealCurveData(
+					ctx,
+					session.ActiveMealID,
+					input.Timestamp,
+					inputWeight,
+					gridWeights,
+				); err != nil {
 					return TelemetryResult{}, fmt.Errorf("insert meal curve data: %w", err)
 				}
 			}
@@ -172,17 +209,23 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 			s.logger.Printf("[状态跃迁] EATING -> SERVING device=%s reason=refill", input.DeviceID)
 			session.CurrentState = StateServing
 			session.ServingBaseWeight = session.LastWeight
-			session.TempPeakWeight = input.WeightG
+			session.ServingBaseGridWeights = session.LastGridWeights
+			session.TempPeakGridWeights = gridWeights
+			session.TempPeakWeight = inputWeight
 			session.EatingStableTS = 0
-			weightForSave = input.WeightG
+			weightForSave = inputWeight
+			gridWeightsForSave = gridWeights
 			break
 		}
 
-		effectiveWeight := input.WeightG
-		if effectiveWeight > session.LastWeight {
-			// In EATING state we enforce a monotonic non-increasing trajectory.
-			effectiveWeight = session.LastWeight
+		effectiveGridWeights := gridWeights
+		for i := 0; i < 4; i++ {
+			if effectiveGridWeights[i] > session.LastGridWeights[i] {
+				// In EATING state we enforce a monotonic non-increasing trajectory.
+				effectiveGridWeights[i] = session.LastGridWeights[i]
+			}
 		}
+		effectiveWeight := sumGridWeights(effectiveGridWeights)
 		effectiveDelta := effectiveWeight - session.LastWeight
 
 		if abs(effectiveDelta) < 5 {
@@ -204,6 +247,7 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 				session.EatingStableTS = 0
 			}
 			weightForSave = session.LastWeight
+			gridWeightsForSave = session.LastGridWeights
 			break
 		}
 
@@ -214,17 +258,26 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 				return TelemetryResult{}, err
 			}
 			weightForSave = effectiveWeight
+			gridWeightsForSave = effectiveGridWeights
 		} else {
 			if effectiveWeight != session.LastWeight {
-				if err := s.persistence.InsertMealCurveData(ctx, session.ActiveMealID, input.Timestamp, effectiveWeight); err != nil {
+				if err := s.persistence.InsertMealCurveData(
+					ctx,
+					session.ActiveMealID,
+					input.Timestamp,
+					effectiveWeight,
+					effectiveGridWeights,
+				); err != nil {
 					return TelemetryResult{}, fmt.Errorf("insert meal curve data: %w", err)
 				}
 			}
 			weightForSave = effectiveWeight
+			gridWeightsForSave = effectiveGridWeights
 		}
 	}
 
 	session.LastWeight = weightForSave
+	session.LastGridWeights = gridWeightsForSave
 	session.LastTimestamp = input.Timestamp.Unix()
 	if err := s.store.Save(ctx, input.DeviceID, session); err != nil {
 		return TelemetryResult{}, err
@@ -239,21 +292,51 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 
 func (s *TelemetryService) finishMeal(ctx context.Context, session *DeviceSession, deviceID string, endUnix int64) error {
 	s.logger.Printf("[状态跃迁] EATING -> IDLE device=%s", deviceID)
+	if session.ActiveMealID == "" {
+		session.CurrentState = StateIdle
+		return nil
+	}
 
 	durationMinutes := durationMinutes(session.ActiveMealStartTS, endUnix)
-	totalLeftoverG := session.LastWeight
-	if totalLeftoverG < 0 {
-		totalLeftoverG = 0
-	}
-	if err := s.persistence.UpdateMealSummary(ctx, session.ActiveMealID, durationMinutes, totalLeftoverG); err != nil {
+	if err := s.persistence.UpdateMealSummary(ctx, session.ActiveMealID, durationMinutes); err != nil {
 		return fmt.Errorf("update meal summary: %w", err)
+	}
+
+	grids := make([]model.MealGrid, 0, 4)
+	for i := 0; i < 4; i++ {
+		served := session.ServedGridTotals[i]
+		if served < 0 {
+			served = 0
+		}
+		leftover := session.LastGridWeights[i]
+		if leftover < 0 {
+			leftover = 0
+		}
+		intake := served - leftover
+		if intake < 0 {
+			intake = 0
+		}
+
+		grids = append(grids, model.MealGrid{
+			GridIndex: i + 1,
+			ServedG:   served,
+			LeftoverG: leftover,
+			IntakeG:   intake,
+		})
+	}
+	if err := s.persistence.InsertMealGrids(ctx, session.ActiveMealID, grids); err != nil {
+		return fmt.Errorf("insert meal grids: %w", err)
 	}
 
 	session.CurrentState = StateIdle
 	session.ActiveMealID = ""
 	session.ActiveMealStartTS = 0
 	session.ServingBaseWeight = 0
+	session.ServingBaseGridWeights = [4]int{}
 	session.TempPeakWeight = 0
+	session.TempPeakGridWeights = [4]int{}
+	session.ServedGridTotals = [4]int{}
+	session.ServingStableTS = 0
 	session.EatingStableTS = 0
 	return nil
 }
@@ -276,14 +359,28 @@ func (s *RedisDeviceStateStore) Load(ctx context.Context, deviceID string) (Devi
 	}
 
 	session := DeviceSession{
-		CurrentState:      values["current_state"],
-		ActiveMealID:      values["active_meal_id"],
-		ActiveMealStartTS: parseInt64(values["active_meal_start_ts"]),
-		ServingBaseWeight: parseInt(values["serving_base_weight"]),
-		LastWeight:        parseInt(values["last_weight"]),
-		LastTimestamp:     parseInt64(values["last_timestamp"]),
-		TempPeakWeight:    parseInt(values["temp_peak_weight"]),
-		EatingStableTS:    parseInt64(values["eating_stable_ts"]),
+		CurrentState:           values["current_state"],
+		ActiveMealID:           values["active_meal_id"],
+		ActiveMealStartTS:      parseInt64(values["active_meal_start_ts"]),
+		ServingBaseWeight:      parseInt(values["serving_base_weight"]),
+		ServingBaseGridWeights: parseGridWeights(values["serving_base_grid_weights"]),
+		ServingStableTS:        parseInt64(values["serving_stable_ts"]),
+		LastWeight:             parseInt(values["last_weight"]),
+		LastGridWeights:        parseGridWeights(values["last_grid_weights"]),
+		LastTimestamp:          parseInt64(values["last_timestamp"]),
+		TempPeakWeight:         parseInt(values["temp_peak_weight"]),
+		TempPeakGridWeights:    parseGridWeights(values["temp_peak_grid_weights"]),
+		ServedGridTotals:       parseGridWeights(values["served_grid_totals"]),
+		EatingStableTS:         parseInt64(values["eating_stable_ts"]),
+	}
+	if session.LastWeight > 0 && sumGridWeights(session.LastGridWeights) == 0 {
+		session.LastGridWeights[0] = session.LastWeight
+	}
+	if session.TempPeakWeight > 0 && sumGridWeights(session.TempPeakGridWeights) == 0 {
+		session.TempPeakGridWeights[0] = session.TempPeakWeight
+	}
+	if session.ServingBaseWeight > 0 && sumGridWeights(session.ServingBaseGridWeights) == 0 {
+		session.ServingBaseGridWeights[0] = session.ServingBaseWeight
 	}
 	if session.CurrentState == "" {
 		session.CurrentState = StateIdle
@@ -293,14 +390,19 @@ func (s *RedisDeviceStateStore) Load(ctx context.Context, deviceID string) (Devi
 
 func (s *RedisDeviceStateStore) Save(ctx context.Context, deviceID string, session DeviceSession) error {
 	data := map[string]any{
-		"current_state":        session.CurrentState,
-		"last_weight":          session.LastWeight,
-		"last_timestamp":       session.LastTimestamp,
-		"temp_peak_weight":     session.TempPeakWeight,
-		"serving_base_weight":  session.ServingBaseWeight,
-		"active_meal_id":       session.ActiveMealID,
-		"active_meal_start_ts": session.ActiveMealStartTS,
-		"eating_stable_ts":     session.EatingStableTS,
+		"current_state":             session.CurrentState,
+		"last_weight":               session.LastWeight,
+		"last_grid_weights":         formatGridWeights(session.LastGridWeights),
+		"last_timestamp":            session.LastTimestamp,
+		"temp_peak_weight":          session.TempPeakWeight,
+		"temp_peak_grid_weights":    formatGridWeights(session.TempPeakGridWeights),
+		"serving_base_weight":       session.ServingBaseWeight,
+		"serving_base_grid_weights": formatGridWeights(session.ServingBaseGridWeights),
+		"served_grid_totals":        formatGridWeights(session.ServedGridTotals),
+		"serving_stable_ts":         session.ServingStableTS,
+		"active_meal_id":            session.ActiveMealID,
+		"active_meal_start_ts":      session.ActiveMealStartTS,
+		"eating_stable_ts":          session.EatingStableTS,
 	}
 	if err := s.client.HSet(ctx, redisDeviceKey(deviceID), data).Err(); err != nil {
 		return fmt.Errorf("write redis state: %w", err)
@@ -363,6 +465,53 @@ func randomHex(size int) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%x", raw), nil
+}
+
+func resolveInputGridWeights(input TelemetryInput) [4]int {
+	if sumGridWeights(input.GridWeights) == 0 && input.WeightG != 0 {
+		return [4]int{input.WeightG, 0, 0, 0}
+	}
+	return input.GridWeights
+}
+
+func sumGridWeights(weights [4]int) int {
+	return weights[0] + weights[1] + weights[2] + weights[3]
+}
+
+func hasGridIncrease(next [4]int, previous [4]int) bool {
+	for i := 0; i < 4; i++ {
+		if next[i] > previous[i] {
+			return true
+		}
+	}
+	return false
+}
+
+func maxGridWeights(a [4]int, b [4]int) [4]int {
+	out := a
+	for i := 0; i < 4; i++ {
+		if b[i] > out[i] {
+			out[i] = b[i]
+		}
+	}
+	return out
+}
+
+func parseGridWeights(value string) [4]int {
+	var weights [4]int
+	if value == "" {
+		return weights
+	}
+
+	parts := strings.Split(value, ",")
+	for i := 0; i < 4 && i < len(parts); i++ {
+		weights[i] = parseInt(strings.TrimSpace(parts[i]))
+	}
+	return weights
+}
+
+func formatGridWeights(weights [4]int) string {
+	return fmt.Sprintf("%d,%d,%d,%d", weights[0], weights[1], weights[2], weights[3])
 }
 
 func parseInt(value string) int {

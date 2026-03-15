@@ -12,11 +12,22 @@ type fakeMealQueryStore struct {
 	meals      []model.Meal
 	trajectory []model.MealCurveData
 	meal       model.Meal
-	err        error
+	grids      []model.MealGrid
+
+	err       error
+	gridsErr  error
+	updateErr error
+
 	lastCursor *time.Time
 	lastLimit  int
 	lastMealID string
 	lastTS     *time.Time
+
+	updateCalls         int
+	lastUpdateMealID    string
+	lastUpdateGridIndex int
+	lastUpdateFoodName  string
+	lastUpdateUnitCal   float64
 }
 
 func (f *fakeMealQueryStore) ListMeals(_ context.Context, cursor *time.Time, limit int) ([]model.Meal, error) {
@@ -28,6 +39,29 @@ func (f *fakeMealQueryStore) ListMeals(_ context.Context, cursor *time.Time, lim
 func (f *fakeMealQueryStore) GetMealByID(_ context.Context, mealID string) (model.Meal, error) {
 	f.lastMealID = mealID
 	return f.meal, f.err
+}
+
+func (f *fakeMealQueryStore) ListMealGrids(_ context.Context, mealID string) ([]model.MealGrid, error) {
+	f.lastMealID = mealID
+	if f.gridsErr != nil {
+		return nil, f.gridsErr
+	}
+	return f.grids, nil
+}
+
+func (f *fakeMealQueryStore) UpdateMealGridFood(
+	_ context.Context,
+	mealID string,
+	gridIndex int,
+	foodName string,
+	unitCalPer100G float64,
+) error {
+	f.updateCalls++
+	f.lastUpdateMealID = mealID
+	f.lastUpdateGridIndex = gridIndex
+	f.lastUpdateFoodName = foodName
+	f.lastUpdateUnitCal = unitCalPer100G
+	return f.updateErr
 }
 
 func (f *fakeMealQueryStore) ListMealTrajectory(_ context.Context, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error) {
@@ -62,6 +96,71 @@ func TestMealQueryServiceGetByID(t *testing.T) {
 	}
 	if store.lastMealID != "meal-1" {
 		t.Fatalf("expected meal id meal-1, got %s", store.lastMealID)
+	}
+}
+
+func TestMealQueryServiceGetDetail(t *testing.T) {
+	store := &fakeMealQueryStore{
+		meal: model.Meal{MealID: "meal-1"},
+		grids: []model.MealGrid{
+			{MealID: "meal-1", GridIndex: 1},
+			{MealID: "meal-1", GridIndex: 2},
+		},
+	}
+	svc := NewMealQueryService(store)
+
+	meal, grids, err := svc.GetMealDetail(context.Background(), "meal-1")
+	if err != nil {
+		t.Fatalf("get meal detail failed: %v", err)
+	}
+	if meal.MealID != "meal-1" {
+		t.Fatalf("expected meal_id=meal-1, got %s", meal.MealID)
+	}
+	if len(grids) != 2 {
+		t.Fatalf("expected 2 grids, got %d", len(grids))
+	}
+}
+
+func TestMealQueryServiceAttachFoods(t *testing.T) {
+	store := &fakeMealQueryStore{
+		meal: model.Meal{MealID: "meal-1"},
+		grids: []model.MealGrid{
+			{MealID: "meal-1", GridIndex: 1},
+			{MealID: "meal-1", GridIndex: 2},
+		},
+	}
+	svc := NewMealQueryService(store)
+
+	err := svc.AttachFoods(context.Background(), "meal-1", []model.MealGrid{
+		{GridIndex: 1, FoodName: "rice", UnitCalPer100G: 116},
+		{GridIndex: 2, FoodName: "egg", UnitCalPer100G: 80},
+	})
+	if err != nil {
+		t.Fatalf("attach foods failed: %v", err)
+	}
+	if store.updateCalls != 2 {
+		t.Fatalf("expected 2 updates, got %d", store.updateCalls)
+	}
+	if store.lastUpdateMealID != "meal-1" {
+		t.Fatalf("expected update meal_id=meal-1, got %s", store.lastUpdateMealID)
+	}
+}
+
+func TestMealQueryServiceAttachFoodsRejectsDuplicateGrid(t *testing.T) {
+	store := &fakeMealQueryStore{
+		meal: model.Meal{MealID: "meal-1"},
+		grids: []model.MealGrid{
+			{MealID: "meal-1", GridIndex: 1},
+		},
+	}
+	svc := NewMealQueryService(store)
+
+	err := svc.AttachFoods(context.Background(), "meal-1", []model.MealGrid{
+		{GridIndex: 1, FoodName: "rice", UnitCalPer100G: 116},
+		{GridIndex: 1, FoodName: "rice-2", UnitCalPer100G: 116},
+	})
+	if err != ErrInvalidInput {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }
 
