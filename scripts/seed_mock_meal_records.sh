@@ -1,10 +1,15 @@
 #!/bin/bash
 # 通过 API 导入 Mock 用餐记录并触发汇总与报告（便于图表/日报有数据）
 # 使用前请先启动后端：npm start
-# 用法：bash scripts/seed_mock_meal_records.sh [BASE_URL]，默认 http://localhost:3000
+# 用法：bash scripts/seed_mock_meal_records.sh [BASE_URL] [日期YYYY-MM-DD]
+# 默认 BASE=http://localhost:3000，日期=今天（与前端默认「今天」一致，图表会显示）
 
 BASE="${1:-http://localhost:3000}"
-DATE="${2:-2026-03-14}"
+if [ -n "$2" ]; then
+  DATE="$2"
+else
+  DATE=$(date +%Y-%m-%d)
+fi
 
 echo "Base URL: $BASE  Date: $DATE"
 echo "1. 导入 Mock 用餐记录..."

@@ -113,6 +113,8 @@
 .badge-low { background: #d5f5e3; color: #1e8449; }
 .loading { color: #666; }
 .error { color: #c0392b; }
+.hint { color: #666; font-size: 0.9rem; margin: 0.5rem 0; }
+.hint code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
 .report-text {
   white-space: pre-wrap;
   background: #f8f9fa;

@@ -8,13 +8,14 @@ const db = require('../config/db');
 
 /**
  * 获取用户指定日期范围内的日汇总（按日期升序）
+ * 优先读 Daily_Diet_Summary；若为空则从 Meal_Records 按日聚合（便于未跑汇总时图表也能显示）
  * @param {number} userId
  * @param {string} startDate - YYYY-MM-DD
  * @param {string} endDate - YYYY-MM-DD
- * @returns {Promise<Array<{ date: string, total_initial_weight, total_remaining_weight, total_intake_weight, total_calories, avg_eating_speed, ... }>>}
+ * @returns {Promise<Array<{ date: string, total_initial_weight, total_remaining_weight, total_intake_weight, total_calories, avg_eating_speed, meal_count }>>}
  */
 async function getSummaryRange(userId, startDate, endDate) {
-  const rows = await db.query(
+  let rows = await db.query(
     `SELECT date, total_initial_weight, total_remaining_weight, total_intake_weight,
             total_calories, avg_eating_speed, meal_count
      FROM Daily_Diet_Summary
@@ -22,7 +23,39 @@ async function getSummaryRange(userId, startDate, endDate) {
      ORDER BY date ASC`,
     [userId, startDate, endDate]
   );
-  return rows || [];
+  rows = rows || [];
+  if (rows.length > 0) return rows;
+
+  const dateStart = `${startDate} 00:00:00`;
+  const dateEnd = `${endDate} 23:59:59`;
+  const raw = await db.query(
+    `SELECT DATE(meal_time) AS date,
+            SUM(initial_weight) AS total_initial_weight,
+            SUM(remaining_weight) AS total_remaining_weight,
+            SUM(intake_weight) AS total_intake_weight,
+            SUM(total_calories) AS total_calories,
+            AVG(eating_speed) AS avg_eating_speed,
+            COUNT(*) AS meal_count
+     FROM Meal_Records
+     WHERE user_id = ? AND meal_time >= ? AND meal_time <= ?
+     GROUP BY DATE(meal_time)
+     ORDER BY date ASC`,
+    [userId, dateStart, dateEnd]
+  );
+  if (!raw || raw.length === 0) return [];
+  return raw.map(r => {
+    const d = r.date;
+    const dateStr = d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+    return {
+    date: dateStr,
+    total_initial_weight: r.total_initial_weight,
+    total_remaining_weight: r.total_remaining_weight,
+    total_intake_weight: r.total_intake_weight,
+    total_calories: r.total_calories,
+    avg_eating_speed: r.avg_eating_speed,
+    meal_count: r.meal_count
+  };
+  });
 }
 
 /**

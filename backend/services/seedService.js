@@ -36,9 +36,10 @@ async function insertMealRecords(records) {
 
   let inserted = 0;
   for (const r of records) {
-    const userId = Number(r.user_id);
+    let userId = Number(r.user_id);
+    if (!Number.isFinite(userId) || userId < 1) userId = 1;
     const mealTime = normalizeMealTime(r.meal_time);
-    if (!userId || !mealTime) continue;
+    if (!mealTime) continue;
     const initial = Number(r.initial_weight) ?? 0;
     const remaining = Number(r.remaining_weight) ?? 0;
     const intake = Number(r.intake_weight) ?? (initial - remaining);

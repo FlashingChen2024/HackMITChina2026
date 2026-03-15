@@ -14,16 +14,20 @@ function useChartOption(chartType, user_id, start_date, end_date) {
   const [option, setOption] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isEmpty, setIsEmpty] = useState(false);
 
   const load = useCallback(async () => {
     if (!user_id || !start_date || !end_date) return;
     setLoading(true);
     setError(null);
+    setIsEmpty(false);
     try {
       const res = await fetchChartData({ user_id, start_date, end_date, chart_type: chartType });
-      const d = res.data || {};
+      const d = res.data || res || {};
       const dates = d.dates || [];
       const series = d.series || [];
+      const hasData = dates.length > 0 || (series.length > 0 && series.some(s => (s.data && s.data.length) || (s.value != null)));
+      setIsEmpty(!hasData);
 
       if (chartType === 'nutrition_pie') {
         const pieData = Array.isArray(series) && series[0]?.value !== undefined
@@ -57,7 +61,7 @@ function useChartOption(chartType, user_id, start_date, end_date) {
     }
   }, [chartType, user_id, start_date, end_date]);
 
-  return [option, loading, error, load];
+  return [option, loading, error, isEmpty, load];
 }
 
 export default function Charts() {
@@ -97,7 +101,7 @@ export default function Charts() {
 }
 
 function ChartSection({ chartType, user_id, start_date, end_date }) {
-  const [option, loading, error, load] = useChartOption(chartType, user_id, start_date, end_date);
+  const [option, loading, error, isEmpty, load] = useChartOption(chartType, user_id, start_date, end_date);
 
   return (
     <div className="card">
@@ -106,6 +110,9 @@ function ChartSection({ chartType, user_id, start_date, end_date }) {
         <button type="button" className="btn" onClick={load} disabled={loading}>加载</button>
       </div>
       {error && <p className="error">{error}</p>}
+      {!loading && !error && isEmpty && (
+        <p className="hint">该日期范围内无汇总数据。请先导入 Mock 数据后，<strong>对导入日期执行「每日汇总」</strong>（调用 POST /api/diet/summary/run，body 传 date 如 2026-03-14），或直接运行 <code>bash scripts/seed_mock_meal_records.sh</code> 一键导入并汇总。</p>
+      )}
       <div className="chart-wrap">
         <ChartBlock option={option} loading={loading} />
       </div>

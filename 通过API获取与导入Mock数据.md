@@ -4,6 +4,28 @@
 
 ---
 
+## 图表不显示时请检查
+
+**图表数据来自「每日汇总表」Daily_Diet_Summary，不是直接来自用餐记录 Meal_Records。**
+
+若你只调用了「导入用餐记录」接口（POST /api/diet/seed/meal_records），图表会没有数据。需要再对**导入数据所在日期**执行一次「每日汇总」：
+
+```bash
+curl -X POST http://localhost:3000/api/diet/summary/run \
+  -H "Content-Type: application/json" \
+  -d '{"date":"2026-03-14"}'
+```
+
+或直接运行一键脚本（会先导入 2 条记录，再自动执行汇总和生成报告）：
+
+```bash
+bash scripts/seed_mock_meal_records.sh
+```
+
+前端「统计图表」页的日期范围要**包含**你导入/汇总的日期（如 2026-03-14），然后点击各图表的「加载」按钮。
+
+---
+
 ## 一、导入 Mock 数据（三种方式）
 
 ### 方式 1：批量写入用餐记录（推荐，用于图表/日报）
