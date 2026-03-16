@@ -18,6 +18,7 @@ type MealQueryStore interface {
 	ListMealGrids(ctx context.Context, mealID string) ([]model.MealGrid, error)
 	UpdateMealGridFood(ctx context.Context, mealID string, gridIndex int, foodName string, unitCalPer100G float64) error
 	ListMealTrajectory(ctx context.Context, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error)
+	AggregateDailyStatistics(ctx context.Context, userID string, startDate time.Time, endDate time.Time) ([]model.DailyStatisticsRow, error)
 }
 
 type MealQueryService struct {
@@ -112,4 +113,18 @@ func (s *MealQueryService) GetMealTrajectory(
 	lastTimestamp *time.Time,
 ) ([]model.MealCurveData, error) {
 	return s.store.ListMealTrajectory(ctx, mealID, lastTimestamp)
+}
+
+func (s *MealQueryService) AggregateDailyStatistics(
+	ctx context.Context,
+	userID string,
+	startDate time.Time,
+	endDate time.Time,
+) ([]model.DailyStatisticsRow, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" || endDate.Before(startDate) {
+		return nil, ErrInvalidInput
+	}
+
+	return s.store.AggregateDailyStatistics(ctx, userID, startDate, endDate)
 }

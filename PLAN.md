@@ -1,38 +1,31 @@
-**实施原则**：严格分块，步步为营。跑通上一层 Postman 测试前，严禁进入下一层。
+**实施原则**：云端算力前置，专注 SQL 性能与数据结构转化。
 
-### 🟢 M1: 鉴权与物理强绑定 (Auth & Hook)（已完成）
-
-* **任务**：
-1. 建立 `users` 和 `device_bindings` 模型。
-2. 实现注册/登录接口及 `JWTAuthMiddleware` 拦截器。
-3. 实现设备绑定接口。修改 `/hardware/telemetry` 植入反向拦截网关。
-
-
-* **验收**：未绑定设备发数据被静默丢弃；绑定后成功触发 Redis 状态机流转。
-
-### 🟢 M2: 分格基座与状态机解耦 (Grid FSM)（已完成）
+### 🟢 M1: 聚合 SQL 逻辑构建与 GORM 适配（已完成）
 
 * **任务**：
-1. 建立 `meal_grids` 和修改后的 `meals` 模型。
-2. 大改 `fsm_engine.go`：就餐结束时，往 `meal_grids` 插入 4 行独立数据（包含打饭量和剩余量，食物名称暂空）。
+1. 在 `MealRepository` 层编写针对 `GET /users/me/statistics/charts` 的自定义 SQL 或 GORM `Select().Group()` 方法。
+2. 实现按照 `start_date` 和 `end_date` 过滤数据。
+3. 联表或聚合计算 `SUM(total_cal)`, `SUM(intake_g)`, 及推算 `AVG(speed)`。
 
 
-* **验收**：硬件发送完一顿饭的轨迹后，数据库里成功生成该饭局的 4 个格子明细记录。
+* **验收**：通过 Go 单元测试或数据库控制台直接运行该聚合 SQL，确认按天分组的数据准确无误，且无日期遗漏或跨时区偏移。
 
-### 🟢 M3: AI 视觉参数挂载与卡路里点火 (Vision Pipeline)（已完成）
-
-* **任务**：
-1. 实现 `PUT /meals/{meal_id}/foods` 接口。
-2. 执行运算：遍历传来的数组，在 `meal_grids` 找到对应 `grid_index`，更新 `food_name` 和热量，并自动算出这格的 `total_cal` = `intake_g * unit_cal_per_100g / 100`。
-
-
-* **验收**：调用接口传参后，数据库中这 4 个格子的卡路里数值和菜名被完美填补。单次详情查询接口 (`GET /meals/{meal_id}`) 能返回高精度的分格数据。
-
-### 🟢 M4: 社区聚合引擎 (The Dashboard Core)（已完成）
+### 🟡 M2: 控制器组装与数据结构转换（已完成）
 
 * **任务**：
-1. 建立 `communities` 相关模型，跑通建群和加群接口。
-2. 编写 `GET /communities/{community_id}/dashboard` 接口的核心 SQL 聚合逻辑：联表查询该社区所有用户的 `meal_grids`，按 `food_name` 执行 `GROUP BY`，计算 `AVG(served_g)`、`AVG(intake_g)` 等。
+1. 在 Gin 路由树注册 `/users/me/statistics/charts` 接口，并挂载 JWT 中间件。
+2. 接收 M1 返回的行级结构（Row-based），在 Controller 层通过遍历，将其**反转/拆解**为前端所需的列级并行数组结构（Column-based arrays，如 `dates`, `daily_served_g` 等）。
+3. 处理空值逻辑（如果某天未就餐，应填充 `0` 而非断层）。
 
 
-* **验收**：模拟 3 个用户在同一个社区里吃了几顿“西红柿炒鸡蛋”，调用看板接口，立刻得到准确的平均打饭量和进食速度。
+* **验收 (Postman)**：传入包含历史记录的日期范围，接口成功返回 200，并且 `chart_data` 内的五个数组长度完全一致，数据类型严格对应前端图表要求。
+
+### 🔴 M3: 前后端联调与废弃旧链路
+
+* **任务**：
+1. 通知前端将 `VITE_API_BASE` 统一指向 Go 云端地址。
+2. 前端彻底删除并下线 Node.js 图表聚合中间层代码。
+3. 前端图表组件切换为调用 v4.1 新接口并完成数据绑定。
+
+
+* **验收**：通过客户端 App 访问“统计页面”，图表秒开，折线图走势与后端数据库手工核算的聚合结果完全一致，全链路架构统一完成。

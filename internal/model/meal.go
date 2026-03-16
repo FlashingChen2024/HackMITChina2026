@@ -48,3 +48,11 @@ type MealGrid struct {
 func (MealGrid) TableName() string {
 	return "meal_grids"
 }
+
+type DailyStatisticsRow struct {
+	Date            string  `gorm:"column:date"`
+	DailyServedG    float64 `gorm:"column:daily_served_g"`
+	DailyIntakeG    float64 `gorm:"column:daily_intake_g"`
+	DailyCalories   float64 `gorm:"column:daily_calories"`
+	AvgSpeedGPerMin float64 `gorm:"column:avg_speed_g_per_min"`
+}

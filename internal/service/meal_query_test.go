@@ -13,15 +13,20 @@ type fakeMealQueryStore struct {
 	trajectory []model.MealCurveData
 	meal       model.Meal
 	grids      []model.MealGrid
+	statsRows  []model.DailyStatisticsRow
 
 	err       error
 	gridsErr  error
+	statsErr  error
 	updateErr error
 
 	lastCursor *time.Time
 	lastLimit  int
 	lastMealID string
 	lastTS     *time.Time
+	lastUserID string
+	lastStart  time.Time
+	lastEnd    time.Time
 
 	updateCalls         int
 	lastUpdateMealID    string
@@ -68,6 +73,18 @@ func (f *fakeMealQueryStore) ListMealTrajectory(_ context.Context, mealID string
 	f.lastMealID = mealID
 	f.lastTS = lastTimestamp
 	return f.trajectory, f.err
+}
+
+func (f *fakeMealQueryStore) AggregateDailyStatistics(
+	_ context.Context,
+	userID string,
+	startDate time.Time,
+	endDate time.Time,
+) ([]model.DailyStatisticsRow, error) {
+	f.lastUserID = userID
+	f.lastStart = startDate
+	f.lastEnd = endDate
+	return f.statsRows, f.statsErr
 }
 
 func TestMealQueryServiceUsesCursorPagination(t *testing.T) {
@@ -177,5 +194,44 @@ func TestMealQueryServiceGetTrajectory(t *testing.T) {
 	}
 	if store.lastTS == nil || !store.lastTS.Equal(last) {
 		t.Fatalf("expected last timestamp forwarded")
+	}
+}
+
+func TestMealQueryServiceAggregateDailyStatistics(t *testing.T) {
+	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 3, 3, 0, 0, 0, 0, time.UTC)
+	store := &fakeMealQueryStore{
+		statsRows: []model.DailyStatisticsRow{
+			{Date: "2026-03-01", DailyServedG: 600, DailyIntakeG: 500, DailyCalories: 750.5, AvgSpeedGPerMin: 15.2},
+		},
+	}
+	svc := NewMealQueryService(store)
+
+	rows, err := svc.AggregateDailyStatistics(context.Background(), "user-1", start, end)
+	if err != nil {
+		t.Fatalf("aggregate daily statistics failed: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if store.lastUserID != "user-1" {
+		t.Fatalf("expected user_id user-1, got %s", store.lastUserID)
+	}
+	if !store.lastStart.Equal(start) || !store.lastEnd.Equal(end) {
+		t.Fatalf("expected date range forwarded")
+	}
+}
+
+func TestMealQueryServiceAggregateDailyStatisticsRejectsInvalidInput(t *testing.T) {
+	svc := NewMealQueryService(&fakeMealQueryStore{})
+
+	_, err := svc.AggregateDailyStatistics(
+		context.Background(),
+		"",
+		time.Date(2026, 3, 3, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),
+	)
+	if err != ErrInvalidInput {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }

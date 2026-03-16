@@ -76,6 +76,7 @@ func main() {
 		mealsHandler.List,
 		mealsHandler.GetByID,
 		mealsHandler.Trajectory,
+		mealsHandler.StatisticsCharts,
 		communityHandler.Create,
 		communityHandler.Join,
 		communityHandler.Dashboard,

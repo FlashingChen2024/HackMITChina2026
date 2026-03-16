@@ -29,6 +29,7 @@ func buildRouter(jwtMiddleware gin.HandlerFunc) *gin.Engine {
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
 	)
 }
 
@@ -82,6 +83,13 @@ func TestMealsRoutes(t *testing.T) {
 	router.ServeHTTP(trajResp, trajReq)
 	if trajResp.Code != http.StatusOK {
 		t.Fatalf("expected meal trajectory status 200, got %d", trajResp.Code)
+	}
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/api/v1/users/me/statistics/charts", nil)
+	statsResp := httptest.NewRecorder()
+	router.ServeHTTP(statsResp, statsReq)
+	if statsResp.Code != http.StatusOK {
+		t.Fatalf("expected statistics charts status 200, got %d", statsResp.Code)
 	}
 }
 
@@ -153,6 +161,7 @@ func TestProtectedRoutesRequireJWT(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/meals"},
 		{method: http.MethodGet, path: "/api/v1/meals/meal-1"},
 		{method: http.MethodGet, path: "/api/v1/meals/meal-1/trajectory"},
+		{method: http.MethodGet, path: "/api/v1/users/me/statistics/charts"},
 		{method: http.MethodPut, path: "/api/v1/meals/meal-1/foods", body: `{"grids":[]}`},
 		{method: http.MethodPost, path: "/api/v1/communities/create", body: `{"name":"MIT","description":"demo"}`},
 		{method: http.MethodPost, path: "/api/v1/communities/community-1/join"},

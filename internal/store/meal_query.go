@@ -93,3 +93,58 @@ func (s *GormMealQueryStore) ListMealTrajectory(
 	}
 	return points, nil
 }
+
+func (s *GormMealQueryStore) AggregateDailyStatistics(
+	ctx context.Context,
+	userID string,
+	startDate time.Time,
+	endDate time.Time,
+) ([]model.DailyStatisticsRow, error) {
+	start := truncateUTCDate(startDate)
+	end := truncateUTCDate(endDate)
+	if end.Before(start) {
+		return nil, fmt.Errorf("aggregate daily statistics: end_date before start_date")
+	}
+
+	startText := start.Format("2006-01-02")
+	endText := end.Format("2006-01-02")
+
+	mealDaily := s.db.WithContext(ctx).
+		Table("meals AS m").
+		Select(`
+DATE(m.start_time) AS stat_date,
+m.meal_id AS meal_id,
+SUM(mg.served_g) AS meal_served_g,
+SUM(mg.intake_g) AS meal_intake_g,
+SUM(mg.total_cal) AS meal_calories,
+CASE WHEN m.duration_minutes > 0
+THEN SUM(mg.intake_g) * 1.0 / m.duration_minutes
+ELSE 0
+END AS meal_speed_g_per_min`).
+		Joins("JOIN meal_grids AS mg ON mg.meal_id = m.meal_id").
+		Where("m.user_id = ?", userID).
+		Where("DATE(m.start_time) >= ? AND DATE(m.start_time) <= ?", startText, endText).
+		Group("DATE(m.start_time), m.meal_id, m.duration_minutes")
+
+	var rows []model.DailyStatisticsRow
+	if err := s.db.WithContext(ctx).
+		Table("(?) AS meal_daily", mealDaily).
+		Select(`
+meal_daily.stat_date AS date,
+SUM(meal_daily.meal_served_g) AS daily_served_g,
+SUM(meal_daily.meal_intake_g) AS daily_intake_g,
+SUM(meal_daily.meal_calories) AS daily_calories,
+AVG(meal_daily.meal_speed_g_per_min) AS avg_speed_g_per_min`).
+		Group("meal_daily.stat_date").
+		Order("meal_daily.stat_date ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("aggregate daily statistics: %w", err)
+	}
+
+	return rows, nil
+}
+
+func truncateUTCDate(value time.Time) time.Time {
+	utc := value.UTC()
+	return time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
+}

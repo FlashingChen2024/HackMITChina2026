@@ -20,6 +20,12 @@ type MealQueryService interface {
 	GetMealDetail(ctx context.Context, mealID string) (model.Meal, []model.MealGrid, error)
 	AttachFoods(ctx context.Context, mealID string, grids []model.MealGrid) error
 	GetMealTrajectory(ctx context.Context, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error)
+	AggregateDailyStatistics(
+		ctx context.Context,
+		userID string,
+		startDate time.Time,
+		endDate time.Time,
+	) ([]model.DailyStatisticsRow, error)
 }
 
 type MealsHandler struct {
@@ -61,6 +67,14 @@ type trajectoryWeightsResponse struct {
 	Grid2 float64 `json:"grid_2"`
 	Grid3 float64 `json:"grid_3"`
 	Grid4 float64 `json:"grid_4"`
+}
+
+type statisticsChartDataResponse struct {
+	Dates           []string  `json:"dates"`
+	DailyServedG    []float64 `json:"daily_served_g"`
+	DailyIntakeG    []float64 `json:"daily_intake_g"`
+	DailyCalories   []float64 `json:"daily_calories"`
+	AvgSpeedGPerMin []float64 `json:"avg_speed_g_per_min"`
 }
 
 type mealFoodsRequest struct {
@@ -231,6 +245,43 @@ func (h *MealsHandler) Trajectory(c *gin.Context) {
 	})
 }
 
+func (h *MealsHandler) StatisticsCharts(c *gin.Context) {
+	userID, ok := c.Get("user_id")
+	if !ok || strings.TrimSpace(toString(userID)) == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	startDate, endDate, err := parseStatisticsDateRange(c.Query("start_date"), c.Query("end_date"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	rows, err := h.service.AggregateDailyStatistics(
+		c.Request.Context(),
+		strings.TrimSpace(toString(userID)),
+		startDate,
+		endDate,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date range"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "get statistics charts failed"})
+		}
+		return
+	}
+
+	chartData := buildStatisticsChartData(startDate, endDate, rows)
+	c.JSON(http.StatusOK, gin.H{
+		"user_id":    strings.TrimSpace(toString(userID)),
+		"date_range": []string{startDate.Format("2006-01-02"), endDate.Format("2006-01-02")},
+		"chart_data": chartData,
+	})
+}
+
 func parseMealCursor(raw string) (*time.Time, error) {
 	if raw == "" {
 		return nil, nil
@@ -311,6 +362,100 @@ func parseSampleInterval(raw string) (int, error) {
 		return 0, strconv.ErrSyntax
 	}
 	return n, nil
+}
+
+func parseStatisticsDateRange(startRaw string, endRaw string) (time.Time, time.Time, error) {
+	startRaw = strings.TrimSpace(startRaw)
+	endRaw = strings.TrimSpace(endRaw)
+	if startRaw == "" || endRaw == "" {
+		return time.Time{}, time.Time{}, errors.New("start_date and end_date are required")
+	}
+
+	startDate, err := time.Parse("2006-01-02", startRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.New("start_date must be YYYY-MM-DD")
+	}
+	endDate, err := time.Parse("2006-01-02", endRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.New("end_date must be YYYY-MM-DD")
+	}
+	startDate = startDate.UTC()
+	endDate = endDate.UTC()
+	if endDate.Before(startDate) {
+		return time.Time{}, time.Time{}, errors.New("end_date must be on or after start_date")
+	}
+
+	return startDate, endDate, nil
+}
+
+func buildStatisticsChartData(
+	startDate time.Time,
+	endDate time.Time,
+	rows []model.DailyStatisticsRow,
+) statisticsChartDataResponse {
+	byDate := make(map[string]model.DailyStatisticsRow, len(rows))
+	for _, row := range rows {
+		normalizedDate := normalizeStatisticsDate(row.Date)
+		if normalizedDate == "" {
+			continue
+		}
+		byDate[normalizedDate] = row
+	}
+
+	chart := statisticsChartDataResponse{
+		Dates:           []string{},
+		DailyServedG:    []float64{},
+		DailyIntakeG:    []float64{},
+		DailyCalories:   []float64{},
+		AvgSpeedGPerMin: []float64{},
+	}
+
+	for day := startDate; !day.After(endDate); day = day.AddDate(0, 0, 1) {
+		key := day.Format("2006-01-02")
+		chart.Dates = append(chart.Dates, day.Format("01-02"))
+		if row, ok := byDate[key]; ok {
+			chart.DailyServedG = append(chart.DailyServedG, row.DailyServedG)
+			chart.DailyIntakeG = append(chart.DailyIntakeG, row.DailyIntakeG)
+			chart.DailyCalories = append(chart.DailyCalories, row.DailyCalories)
+			chart.AvgSpeedGPerMin = append(chart.AvgSpeedGPerMin, row.AvgSpeedGPerMin)
+			continue
+		}
+
+		chart.DailyServedG = append(chart.DailyServedG, 0)
+		chart.DailyIntakeG = append(chart.DailyIntakeG, 0)
+		chart.DailyCalories = append(chart.DailyCalories, 0)
+		chart.AvgSpeedGPerMin = append(chart.AvgSpeedGPerMin, 0)
+	}
+
+	return chart
+}
+
+func normalizeStatisticsDate(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if len(raw) >= 10 {
+		candidate := raw[:10]
+		if _, err := time.Parse("2006-01-02", candidate); err == nil {
+			return candidate
+		}
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t.UTC().Format("2006-01-02")
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t.UTC().Format("2006-01-02")
+	}
+	return ""
+}
+
+func toString(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return text
 }
 
 func downsampleTrajectory(points []model.MealCurveData, intervalSeconds int) []model.MealCurveData {

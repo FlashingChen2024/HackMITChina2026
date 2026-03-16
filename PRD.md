@@ -1,20 +1,16 @@
-## 1. 核心目标
+**成功响应** `200 OK`
+# 📄 交付物二：智能餐盒后端功能升级需求文档 (PRD v4.1 - 数据图表模块)
 
-将系统的底层颗粒度从“整顿饭”下探到“每一个独立分格”。支持前端 AI 拍照识别食物挂载，实现精准卡路里计算，并落地社区大屏的全局食物均值聚合分析。
+## 1. 升级背景与目标
 
-## 2. 数据库实体重构规范 (GORM Models)
+针对《智能餐盒任务》中“将一段时间的饮食数据做成统计图表”的需求，废弃原定的“前端调用 Node.js 中间层拉取明细进行本地计算”的冗余方案。本次升级将图表聚合运算逻辑（Heavy Computation）全面上移至 Go 语言云端基座，统一系统架构，降低前端 App 内存消耗，并提升接口响应速度。
 
-系统必须建立以下 6 张核心数据表以支撑新业务：
+## 2. 核心功能升级拆解
 
-1. **`users`**: `id` (UUID), `username`, `password_hash` (bcrypt).
-2. **`device_bindings`**: `device_id` (ESP32 MAC), `user_id`.
-3. **`meals`**: `meal_id`, `user_id`, `start_time`, `duration_minutes`. (注：移除了 `total_served_g`，仅保留整体会话信息)。
-4. **`meal_curve_data`**: 时序表，保存每个时间点的 `grid_1` 到 `grid_4` 重量，强依赖联合索引 `(meal_id, timestamp)`。
-5. **`meal_grids` (新增核心表)**: `id`, `meal_id`, `grid_index` (1-4), `food_name`, `unit_cal_per_100g`, `served_g`, `leftover_g`, `intake_g`, `total_cal`。
-6. **`communities` & `user_communities` (新增社区表)**: 管理圈子与用户的多对多关系。
+### 2.1 云端 SQL 数据聚合引擎
 
-## 3. 核心流转逻辑“大手术”
+必须在 Go 后端直接利用关系型数据库（MySQL）的 `GROUP BY DATE()` 特性，对指定时间区间内的多条 `meals` 及 `meal_grids` 记录进行汇总求和与求均值。输出结构需完美对齐 ECharts 期望的并行数组格式（即 X 轴 `dates` 对应多个 Y 轴指标数组）。
 
-* **网关反向映射**：`/hardware/telemetry` 收包时，必须先查询 `device_bindings`。无绑定则丢弃；有绑定则提取 `user_id` 向下透传。
-* **FSM 结算解耦**：状态机从 `EATING -> IDLE` 结算时，不再计算总重量。必须读取 4 个格子的（最高峰值 - 最终值），算出各自的 `served_g` 和 `leftover_g`，并在 `meal_grids` 表中 `INSERT` 4 条初始化记录。
-* **卡路里延迟计算**：前端调用 `/meals/{meal_id}/foods` 时，根据前端传来的 `unit_cal_per_100g`，结合表中已有的 `intake_g`，计算出 `total_cal` 并 `UPDATE` 回 `meal_grids` 表。
+### 2.2 防越权隔离机制 (IDOR Prevention)
+
+图表聚合接口的路由设计必须强制剥离明文 UserID 参数。业务逻辑必须依赖 `JWTAuthMiddleware` 中间件，提取 `Token` 中加密签名的身份信息。该身份信息将作为 SQL `WHERE user_id = ?` 的唯一判定条件，彻底阻断越权拉取他人图表数据的风险。

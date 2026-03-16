@@ -22,16 +22,21 @@ type fakeMealQueryService struct {
 	trajectory []model.MealCurveData
 	meal       model.Meal
 	grids      []model.MealGrid
+	statsRows  []model.DailyStatisticsRow
 
 	listErr   error
 	detailErr error
 	trajErr   error
 	attachErr error
+	statsErr  error
 
 	lastCursor      *time.Time
 	lastTS          *time.Time
 	lastAttachMeal  string
 	lastAttachGrids []model.MealGrid
+	lastStatsUserID string
+	lastStatsStart  time.Time
+	lastStatsEnd    time.Time
 }
 
 func (f *fakeMealQueryService) ListMeals(_ context.Context, cursor *time.Time) ([]model.Meal, error) {
@@ -55,6 +60,18 @@ func (f *fakeMealQueryService) AttachFoods(_ context.Context, mealID string, gri
 func (f *fakeMealQueryService) GetMealTrajectory(_ context.Context, _ string, lastTimestamp *time.Time) ([]model.MealCurveData, error) {
 	f.lastTS = lastTimestamp
 	return f.trajectory, f.trajErr
+}
+
+func (f *fakeMealQueryService) AggregateDailyStatistics(
+	_ context.Context,
+	userID string,
+	startDate time.Time,
+	endDate time.Time,
+) ([]model.DailyStatisticsRow, error) {
+	f.lastStatsUserID = userID
+	f.lastStatsStart = startDate
+	f.lastStatsEnd = endDate
+	return f.statsRows, f.statsErr
 }
 
 func TestMealsListReturnsNextCursor(t *testing.T) {
@@ -329,5 +346,132 @@ func TestMealTrajectoryAcceptsRFC3339NanoLastTimestamp(t *testing.T) {
 	}
 	if service.lastTS.UTC().Format(time.RFC3339Nano) != last {
 		t.Fatalf("expected last_timestamp=%s, got %s", last, service.lastTS.UTC().Format(time.RFC3339Nano))
+	}
+}
+
+func TestMealStatisticsChartsReturnsColumnArraysAndZeroFill(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	service := &fakeMealQueryService{
+		statsRows: []model.DailyStatisticsRow{
+			{Date: "2026-03-01", DailyServedG: 600, DailyIntakeG: 500, DailyCalories: 750.5, AvgSpeedGPerMin: 15.2},
+			{Date: "2026-03-03", DailyServedG: 700, DailyIntakeG: 680, DailyCalories: 910.0, AvgSpeedGPerMin: 18.5},
+		},
+	}
+
+	handler := api.NewMealsHandler(service)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
+	router.GET("/api/v1/users/me/statistics/charts", handler.StatisticsCharts)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/users/me/statistics/charts?start_date=2026-03-01&end_date=2026-03-03",
+		nil,
+	)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+
+	var payload struct {
+		UserID    string   `json:"user_id"`
+		DateRange []string `json:"date_range"`
+		ChartData struct {
+			Dates           []string  `json:"dates"`
+			DailyServedG    []float64 `json:"daily_served_g"`
+			DailyIntakeG    []float64 `json:"daily_intake_g"`
+			DailyCalories   []float64 `json:"daily_calories"`
+			AvgSpeedGPerMin []float64 `json:"avg_speed_g_per_min"`
+		} `json:"chart_data"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if payload.UserID != "user-1" {
+		t.Fatalf("expected user_id user-1, got %s", payload.UserID)
+	}
+	if len(payload.DateRange) != 2 || payload.DateRange[0] != "2026-03-01" || payload.DateRange[1] != "2026-03-03" {
+		t.Fatalf("unexpected date_range: %+v", payload.DateRange)
+	}
+
+	if len(payload.ChartData.Dates) != 3 ||
+		len(payload.ChartData.DailyServedG) != 3 ||
+		len(payload.ChartData.DailyIntakeG) != 3 ||
+		len(payload.ChartData.DailyCalories) != 3 ||
+		len(payload.ChartData.AvgSpeedGPerMin) != 3 {
+		t.Fatalf("expected all chart arrays length 3")
+	}
+
+	if payload.ChartData.Dates[0] != "03-01" || payload.ChartData.Dates[1] != "03-02" || payload.ChartData.Dates[2] != "03-03" {
+		t.Fatalf("unexpected dates: %+v", payload.ChartData.Dates)
+	}
+	if payload.ChartData.DailyServedG[1] != 0 ||
+		payload.ChartData.DailyIntakeG[1] != 0 ||
+		payload.ChartData.DailyCalories[1] != 0 ||
+		payload.ChartData.AvgSpeedGPerMin[1] != 0 {
+		t.Fatalf("expected zero-fill for missing day, got served=%v intake=%v calories=%v speed=%v",
+			payload.ChartData.DailyServedG[1],
+			payload.ChartData.DailyIntakeG[1],
+			payload.ChartData.DailyCalories[1],
+			payload.ChartData.AvgSpeedGPerMin[1],
+		)
+	}
+
+	if service.lastStatsUserID != "user-1" {
+		t.Fatalf("expected service user_id user-1, got %s", service.lastStatsUserID)
+	}
+	if service.lastStatsStart.Format("2006-01-02") != "2026-03-01" || service.lastStatsEnd.Format("2006-01-02") != "2026-03-03" {
+		t.Fatalf("unexpected service date range: %s - %s", service.lastStatsStart, service.lastStatsEnd)
+	}
+}
+
+func TestMealStatisticsChartsRejectsBadDateRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := api.NewMealsHandler(&fakeMealQueryService{})
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
+	router.GET("/api/v1/users/me/statistics/charts", handler.StatisticsCharts)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/users/me/statistics/charts?start_date=bad&end_date=2026-03-03",
+		nil,
+	)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", resp.Code)
+	}
+}
+
+func TestMealStatisticsChartsRequiresJWTContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := api.NewMealsHandler(&fakeMealQueryService{})
+	router := gin.New()
+	router.GET("/api/v1/users/me/statistics/charts", handler.StatisticsCharts)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/users/me/statistics/charts?start_date=2026-03-01&end_date=2026-03-03",
+		nil,
+	)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d", resp.Code)
 	}
 }

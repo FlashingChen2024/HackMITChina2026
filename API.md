@@ -1,53 +1,4 @@
-# 📦 K-XYZ 智能餐盒全链路 API 接口规范 (v4.0 满血版)
-
-### Base URL
-
-* **生产环境**: `https://api.mit.chenyuxia.com/api/v1`
-* **本地开发**: `http://127.0.0.1:8080/api/v1`
-
-### 🛡️ 全局鉴权规范 (Global Auth)
-
-除 **0.健康检查**、**1.硬件遥测上报** 和 **2. 注册/登录** 外，其余所有业务接口均需在 HTTP Request Header 中强制携带 JWT Token：
-
-```http
-Authorization: Bearer <Your_JWT_Token>
-
-```
-
----
-
-## 🔌 0. 基础运维
-
-### 0.1 健康检查 (Ping)
-
-* **接口路径**: `GET /ping`
-* **成功响应** `200 OK`:
-```json
-{
-  "message": "pong",
-  "timestamp": "2026-03-14T09:10:37Z"
-}
-
-```
-
-
-
----
-
-## 🔌 第一部分：硬件底层网关 (IoT Gateway)
-
-### 1. 硬件遥测数据上报
-
-接收底层 ESP32 硬件的高频时序数据。后端需在暗箱中根据 `device_id` 拦截未绑定设备，并将 4 个格子的物理重量分别注入 FSM 状态机进行防抖和平滑处理 。
-
-* **接口路径**: `POST /hardware/telemetry`
-* **鉴权**: 无
-* **请求体**:
-```json
-{
-
-
-# 📄 交付物一：K-XYZ 智能餐盒全链路 API 接口规范 (v4.0 满血版)
+# 📦 交付物一：K-XYZ 智能餐盒全链路 API 接口规范 (v4.1 图表升级版)
 
 ### Base URL
 
@@ -83,6 +34,7 @@ Authorization: Bearer <Your_JWT_Token>
 * **接口路径**: `POST /hardware/telemetry`
 * **鉴权**: 无
 * **请求体**:
+
 ```json
 {
   "device_id": "string (如 ESP32_A1B2C3)",
@@ -97,8 +49,8 @@ Authorization: Bearer <Your_JWT_Token>
 
 ```
 
-
 * **成功响应** `200 OK`:
+
 ```json
 {
   "device_id": "ESP32_A1B2C3",
@@ -108,8 +60,6 @@ Authorization: Bearer <Your_JWT_Token>
 }
 
 ```
-
-
 
 ---
 
@@ -147,6 +97,7 @@ Authorization: Bearer <Your_JWT_Token>
 
 * **接口路径**: `PUT /meals/{meal_id}/foods`
 * **请求体**:
+
 ```json
 {
   "grids": [
@@ -159,7 +110,6 @@ Authorization: Bearer <Your_JWT_Token>
 
 ```
 
-
 * **成功响应** `200 OK`: `{"message": "食物信息挂载成功，卡路里已就绪"}`
 
 ### 5. 获取就餐记录与统计
@@ -169,6 +119,7 @@ Authorization: Bearer <Your_JWT_Token>
 * **接口路径**: `GET /meals`
 * **查询参数**: `cursor` (string, 可选)
 * **成功响应** `200 OK`:
+
 ```json
 {
   "items": [
@@ -184,14 +135,13 @@ Authorization: Bearer <Your_JWT_Token>
 
 ```
 
-
-
 #### 5.2 获取单次用餐高精详情
 
 展示精确到每个格子的打饭量、剩余量、摄入量、卡路里和用餐速度。
 
 * **接口路径**: `GET /meals/{meal_id}`
 * **成功响应** `200 OK`:
+
 ```json
 {
   "meal_id": "string",
@@ -213,13 +163,12 @@ Authorization: Bearer <Your_JWT_Token>
 
 ```
 
-
-
 #### 5.3 获取就餐时序轨迹 (降采样支持)
 
 * **接口路径**: `GET /meals/{meal_id}/trajectory`
 * **查询参数**: `last_timestamp` (增量查询基准), `sample_interval` (降采样秒数)
 * **成功响应** `200 OK`:
+
 ```json
 {
   "meal_id": "string",
@@ -234,7 +183,33 @@ Authorization: Bearer <Your_JWT_Token>
 
 ```
 
+#### 5.4 个人饮食图表数据聚合 (Personal Statistics)
 
+专为前端图表库（ECharts/Chart.js）提供按时间维度对齐的数组数据，直接由后端执行云端聚合，替代 Node.js 中间层。
+
+* **接口路径**: `GET /users/me/statistics/charts`
+* **查询参数**:
+* `start_date` (string, 必填): 统计起始日期，格式 `YYYY-MM-DD`
+* `end_date` (string, 必填): 统计结束日期，格式 `YYYY-MM-DD`
+
+
+* **安全机制**: 严禁在 URL 传 `user_id`。后端自动从 JWT Token 解析用户身份，执行物理隔离聚合。
+* **成功响应** `200 OK`:
+
+```json
+{
+  "user_id": "string",
+  "date_range": ["2026-03-01", "2026-03-14"],
+  "chart_data": {
+    "dates": ["03-01", "03-02", "03-03", "03-04"],
+    "daily_served_g": [600.0, 550.0, 700.0, 400.0],
+    "daily_intake_g": [500.0, 450.0, 680.0, 350.0],
+    "daily_calories": [750.5, 620.0, 910.0, 480.0],
+    "avg_speed_g_per_min": [15.2, 14.0, 18.5, 12.0]
+  }
+}
+
+```
 
 ---
 
@@ -259,6 +234,7 @@ Authorization: Bearer <Your_JWT_Token>
 
 * **接口路径**: `GET /communities/{community_id}/dashboard`
 * **成功响应** `200 OK`:
+
 ```json
 {
   "community_id": "string",
