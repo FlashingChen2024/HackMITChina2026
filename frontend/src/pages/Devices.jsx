@@ -1,4 +1,25 @@
 import { useState } from 'react';
+import {
+  Container,
+  Card,
+  CardContent,
+  TextField,
+  Button,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Box,
+  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+} from '@mui/material';
+import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { listBindings, bind, unbind } from '../api/devices';
 
 export default function Devices() {
@@ -6,6 +27,8 @@ export default function Devices() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [list, setList] = useState([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteItemId, setDeleteItemId] = useState('');
 
   const loadList = async () => {
     setLoading(true);
@@ -37,53 +60,132 @@ export default function Devices() {
     }
   };
 
-  const handleUnbind = async (did) => {
-    if (!confirm(`确定解绑设备 ${did}？`)) return;
+  const handleUnbindClick = (did) => {
+    setDeleteItemId(did);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleUnbindConfirm = async () => {
     setLoading(true);
     setError(null);
     try {
-      await unbind(did);
+      await unbind(deleteItemId);
       loadList();
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
+      setDeleteDialogOpen(false);
+      setDeleteItemId('');
     }
   };
 
   return (
-    <div>
-      <div className="card">
-        <h2>设备管理</h2>
-        <div className="form-row">
-          <button type="button" className="btn" onClick={loadList} disabled={loading}>查询已绑定设备</button>
-        </div>
-        <form className="form-row" onSubmit={handleBind}>
-          <label>设备 ID</label>
-          <input
-            type="text"
-            placeholder="如 aa:bb:cc"
-            value={device_id}
-            onChange={e => setDevice_id(e.target.value)}
-          />
-          <button type="submit" className="btn" disabled={loading || !device_id.trim()}>绑定</button>
-        </form>
-        {error && <p className="error">{error}</p>}
-      </div>
+    <Container maxWidth="md">
+      <Box sx={{ py: 2 }}>
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+              🔌 设备管理
+            </Typography>
 
-      {list.length > 0 && (
-        <div className="card">
-          <h3>已绑定设备</h3>
-          <ul className="list">
-            {list.map((item, i) => (
-              <li key={i}>
-                <span>{item.device_id}</span>
-                <button type="button" className="btn btn-danger" onClick={() => handleUnbind(item.device_id)} disabled={loading}>解绑</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+            <Box component="form" onSubmit={handleBind} sx={{ mb: 3 }}>
+              <TextField
+                fullWidth
+                placeholder="设备 ID 如 aa:bb:cc"
+                value={device_id}
+                onChange={(e) => setDevice_id(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleBind}
+                disabled={loading || !device_id.trim()}
+              >
+                绑定设备
+              </Button>
+            </Box>
+
+            <Button
+              variant="outlined"
+              fullWidth
+              onClick={loadList}
+              disabled={loading}
+              sx={{ mb: 2 }}
+            >
+              查询已绑定设备
+            </Button>
+
+            {error && <Alert severity="error">{error}</Alert>}
+          </CardContent>
+        </Card>
+
+        {list.length > 0 && (
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                已绑定的设备（{list.length}）
+              </Typography>
+              <List>
+                {list.map((item, idx) => (
+                  <ListItem
+                    key={idx}
+                    divider={idx < list.length - 1}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                            {item.device_id}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    <IconButton
+                      edge="end"
+                      color="error"
+                      onClick={() => handleUnbindClick(item.device_id)}
+                      disabled={loading}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        )}
+
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={() => setDeleteDialogOpen(false)}
+        >
+          <DialogTitle>确认解绑</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              确定要解绑设备 <strong>{deleteItemId}</strong> 吗？
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteDialogOpen(false)}>取消</Button>
+            <Button
+              onClick={handleUnbindConfirm}
+              variant="contained"
+              color="error"
+              disabled={loading}
+            >
+              解绑
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    </Container>
   );
 }
