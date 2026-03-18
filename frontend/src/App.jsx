@@ -7,6 +7,7 @@ import Charts from './pages/Charts';
 import Report from './pages/Report';
 import Recommendations from './pages/Recommendations';
 import Meals from './pages/Meals';
+import RealTimeMeals from './pages/RealTimeMeals';
 import Devices from './pages/Devices';
 import Community from './pages/Community';
 import Login from './pages/Login';
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="report" element={<RequireAuth><Report /></RequireAuth>} />
           <Route path="recommendations" element={<RequireAuth><Recommendations /></RequireAuth>} />
           <Route path="meals" element={<RequireAuth><Meals /></RequireAuth>} />
+          <Route path="realtime-meals" element={<RequireAuth><RealTimeMeals /></RequireAuth>} />
           <Route path="devices" element={<RequireAuth><Devices /></RequireAuth>} />
           <Route path="community" element={<RequireAuth><Community /></RequireAuth>} />
         </Route>

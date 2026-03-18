@@ -26,6 +26,7 @@ import {
   Restaurant as MealsIcon,
   Devices as DevicesIcon,
   Group as CommunityIcon,
+  Timeline as TimelineIcon,
   Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { getToken, setToken, getCurrentUser } from '../api/client';
@@ -38,6 +39,7 @@ const menuItems = [
   { label: 'AI 报告', path: '/report', icon: ReportIcon },
   { label: '个性化建议', path: '/recommendations', icon: RecommendationIcon },
   { label: '用餐记录', path: '/meals', icon: MealsIcon },
+  { label: '实时用餐数据', path: '/realtime-meals', icon: TimelineIcon },
   { label: '设备管理', path: '/devices', icon: DevicesIcon },
   { label: '社区', path: '/community', icon: CommunityIcon },
 ];
