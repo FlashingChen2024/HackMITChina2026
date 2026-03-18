@@ -122,6 +122,9 @@ export default function Charts() {
   });
   const [end_date, setEnd_date] = useState(() => new Date().toISOString().slice(0, 10));
 
+  // 日期校验
+  const dateError = start_date && end_date && start_date > end_date ? '开始日期不能晚于结束日期' : null;
+
   return (
     <div>
       <div className="card">
@@ -129,13 +132,25 @@ export default function Charts() {
         <div className="form-row">
           {currentUser && <span className="hint">当前用户：{currentUser.username}（ID: {currentUser.userId}）</span>}
           <label>开始日期</label>
-          <input type="date" value={start_date} onChange={e => setStart_date(e.target.value)} />
+          <input type="date" value={start_date} onChange={e => setStart_date(e.target.value)} max={end_date} />
           <label>结束日期</label>
-          <input type="date" value={end_date} onChange={e => setEnd_date(e.target.value)} />
+          <input type="date" value={end_date} onChange={e => setEnd_date(e.target.value)} min={start_date} />
         </div>
+        {dateError && (
+          <p style={{
+            color: '#d32f2f',
+            backgroundColor: '#ffebee',
+            padding: '10px',
+            borderRadius: '4px',
+            marginTop: '10px',
+            borderLeft: '4px solid #d32f2f'
+          }}>
+            ⚠️ {dateError}
+          </p>
+        )}
       </div>
 
-      {CHART_TYPES.map(ct => (
+      {!dateError && CHART_TYPES.map(ct => (
         <ChartSection
           key={ct}
           chartType={ct}
