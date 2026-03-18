@@ -24,6 +24,8 @@ bash scripts/seed_mock_meal_records.sh
 
 前端「统计图表」页的日期范围要**包含**你导入/汇总的日期（如 2026-03-14），然后点击各图表的「加载」按钮。
 
+**若要让图表显示「餐盒 / 服务器」遥测数据**：先在前端用你的账号登录 → 设备管理绑定设备 → 运行遥测脚本（见下方「方式 2」），再对**遥测发生当日**执行「每日汇总」`POST /api/diet/summary/run` body `{"date":"YYYY-MM-DD"}`，图表中该日期就会出现来自餐盒的数据。
+
 ---
 
 ## 一、导入 Mock 数据（三种方式）
@@ -101,28 +103,32 @@ curl -X POST http://localhost:3000/api/diet/seed/meal_records \
 
 通过遥测接口模拟一次完整就餐，会自动写入 `Lunchbox_Meals`、`Meal_Curve_Data` 和 `Meal_Records`。
 
-1. **绑定设备**（若尚未绑定）：
+1. **绑定设备**：在前端「设备管理」绑定设备（需先登录），或：
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/devices/bindings \
-  -H "Content-Type: application/json" \
-  -d '{"device_id":"aa:bb:cc","user_id":1}'
+# 先登录获取 Token，再绑定（user_id 从 Token 取）
+curl -X POST http://localhost:3000/api/v1/devices/bind \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <你的Token>" \
+  -d '{"device_id":"aa:bb:cc"}'
 ```
 
-2. **执行 7 拍遥测脚本**（项目根目录）：
+2. **执行完整遥测脚本**（会触发一次打饭→就餐→结算，写入当前用户）：
 
 ```bash
-bash scripts/test_telemetry_flow.sh
+# 用当前账号的数据：先登录前端，在控制台执行 localStorage.getItem('token') 复制 Token，再：
+TOKEN="复制的Token" bash scripts/test_telemetry_flow.sh
+# 未传 TOKEN 时脚本会注册 testuser 并绑定，数据归属 testuser
 ```
 
-或手动按顺序调用多次：
+3. **让图表显示该日数据**：对遥测发生当日执行「每日汇总」：
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/hardware/telemetry \
-  -H "Content-Type: application/json" \
-  -d '{"device_id":"aa:bb:cc","weight_g":100,"timestamp":1715000000}'
-# 再逐步增加/减少 weight_g，触发 IDLE→SERVING→EATING→IDLE
+curl -X POST http://localhost:3000/api/diet/summary/run \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <Token>" \
+  -d '{"date":"2026-03-13"}'
 ```
+
+脚本默认使用日期 2026-03-13；在统计图表中选择该日期范围并点击「加载」即可看到餐盒数据。
 
 ---
 

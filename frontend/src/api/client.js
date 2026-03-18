@@ -8,6 +8,23 @@ export function getToken() {
   return localStorage.getItem('token') || '';
 }
 
+/**
+ * 从 JWT 解析当前用户（仅解码 payload，不校验签名）
+ * @returns {{ userId: number, username: string } | null}
+ */
+export function getCurrentUser() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const userId = payload.userId != null ? Number(payload.userId) : null;
+    if (userId == null || !Number.isFinite(userId)) return null;
+    return { userId, username: payload.username || '' };
+  } catch (_) {
+    return null;
+  }
+}
+
 export function setToken(token) {
   if (token) localStorage.setItem('token', token);
   else localStorage.removeItem('token');

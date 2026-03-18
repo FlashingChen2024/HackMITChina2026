@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { setToken } from '../api/client';
 import { login, register } from '../api/auth';
 
 export default function Login() {
@@ -17,13 +18,10 @@ export default function Login() {
     try {
       if (isRegister) {
         await register(username.trim(), password);
-        const res = await login(username.trim(), password);
-        if (res.token) {
-          navigate('/', { replace: true });
-          window.location.reload();
-        }
-      } else {
-        await login(username.trim(), password);
+      }
+      const res = await login(username.trim(), password);
+      if (res && res.token) {
+        setToken(res.token);
         navigate('/', { replace: true });
         window.location.reload();
       }

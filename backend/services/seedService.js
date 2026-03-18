@@ -20,10 +20,11 @@ function normalizeMealTime(mealTime) {
 
 /**
  * 批量插入用餐记录（Mock 数据）
- * @param {Array<{ user_id: number, meal_time: string, initial_weight?: number, remaining_weight?: number, intake_weight?: number, eating_duration?: number, eating_speed?: number, total_calories?: number }>} records
+ * @param {Array<{ user_id?: number, meal_time: string, initial_weight?: number, remaining_weight?: number, intake_weight?: number, eating_duration?: number, eating_speed?: number, total_calories?: number }>} records
+ * @param {number} [currentUserId] - 未传 user_id 时使用的用户 ID（如鉴权后的当前用户）
  * @returns {Promise<{ inserted: number }>}
  */
-async function insertMealRecords(records) {
+async function insertMealRecords(records, currentUserId) {
   if (!Array.isArray(records) || records.length === 0) {
     return { inserted: 0 };
   }
@@ -37,7 +38,7 @@ async function insertMealRecords(records) {
   let inserted = 0;
   for (const r of records) {
     let userId = Number(r.user_id);
-    if (!Number.isFinite(userId) || userId < 1) userId = 1;
+    if (!Number.isFinite(userId) || userId < 1) userId = Number(currentUserId) || 1;
     const mealTime = normalizeMealTime(r.meal_time);
     if (!mealTime) continue;
     const initial = Number(r.initial_weight) ?? 0;

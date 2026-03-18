@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { getCurrentUser } from '../api/client';
 import { fetchRecommendations } from '../api/recommendations';
 
 export default function Recommendations() {
-  const [user_id, setUser_id] = useState(1);
+  const currentUser = getCurrentUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [list, setList] = useState([]);
@@ -12,7 +13,7 @@ export default function Recommendations() {
     setError(null);
     setList([]);
     try {
-      const res = await fetchRecommendations(user_id);
+      const res = await fetchRecommendations();
       setList(res.data || []);
     } catch (e) {
       setError(e.message);
@@ -26,8 +27,7 @@ export default function Recommendations() {
       <div className="card">
         <h2>个性化建议</h2>
         <div className="form-row">
-          <label>用户 ID</label>
-          <input type="number" min="1" value={user_id} onChange={e => setUser_id(Number(e.target.value) || 1)} />
+          {currentUser && <span className="hint">当前用户：{currentUser.username}（ID: {currentUser.userId}）</span>}
           <button type="button" className="btn" onClick={load} disabled={loading}>加载建议</button>
         </div>
         {error && <p className="error">{error}</p>}

@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { getCurrentUser } from '../api/client';
 import { generateReport, getReport } from '../api/report';
 
 export default function Report() {
-  const [user_id, setUser_id] = useState(1);
+  const currentUser = getCurrentUser();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [reportType, setReportType] = useState('daily');
   const [loading, setLoading] = useState(false);
@@ -15,7 +16,6 @@ export default function Report() {
     setData(null);
     try {
       const res = await generateReport({
-        user_id,
         date,
         report_type: reportType,
         force_fallback: false
@@ -33,7 +33,7 @@ export default function Report() {
     setError(null);
     setData(null);
     try {
-      const res = await getReport(user_id, date);
+      const res = await getReport(date, reportType);
       setData(res.data?.analysis_result || res.data);
     } catch (e) {
       setError(e.message);
@@ -47,8 +47,7 @@ export default function Report() {
       <div className="card">
         <h2>AI 报告</h2>
         <div className="form-row">
-          <label>用户 ID</label>
-          <input type="number" min="1" value={user_id} onChange={e => setUser_id(Number(e.target.value) || 1)} />
+          {currentUser && <span className="hint">当前用户：{currentUser.username}（ID: {currentUser.userId}）</span>}
           <label>日期</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} />
           <label>类型</label>

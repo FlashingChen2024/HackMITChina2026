@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import Charts from './pages/Charts';
 import Report from './pages/Report';
 import Recommendations from './pages/Recommendations';
+import Meals from './pages/Meals';
 import Devices from './pages/Devices';
 import Login from './pages/Login';
 import { getToken } from './api/client';
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="charts" element={<RequireAuth><Charts /></RequireAuth>} />
         <Route path="report" element={<RequireAuth><Report /></RequireAuth>} />
         <Route path="recommendations" element={<RequireAuth><Recommendations /></RequireAuth>} />
+        <Route path="meals" element={<RequireAuth><Meals /></RequireAuth>} />
         <Route path="devices" element={<RequireAuth><Devices /></RequireAuth>} />
       </Route>
     </Routes>

@@ -3,6 +3,7 @@
  */
 
 const express = require('express');
+const cors = require('cors');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
@@ -13,9 +14,19 @@ const { parseToUnixSeconds } = require('./utils/time');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/** 允许前端跨域（localhost/127.0.0.1 不同端口），解决 Failed to fetch */
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 // ========== 无需鉴权 ==========
+
+/** 根路径提示：前端在 Vite 端口（如 5173），API 在 /api/v1 */
+app.get('/', (req, res) => {
+  res.json({
+    message: 'K-XYZ 智能餐盒 API',
+    docs: '前端请访问 Vite 端口（如 http://localhost:5173），API 路径为 /api/v1/ping、/api/v1/auth/login 等'
+  });
+});
 
 /** 健康检查（旧） */
 app.get('/health', (req, res) => {
@@ -215,12 +226,29 @@ app.post('/api/diet/summary/run', requireAuth, async (req, res) => {
   }
 });
 
+/** 按日期范围批量执行每日汇总（便于服务器上大量 Meal_Records 进入图表） */
+app.post('/api/diet/summary/run_range', requireAuth, async (req, res) => {
+  try {
+    const { runSummaryDateRange } = require('./services/dietSummaryService');
+    const start_date = req.body && req.body.start_date;
+    const end_date = req.body && req.body.end_date;
+    if (!start_date || !end_date) {
+      return res.status(400).json({ code: 400, message: '缺少 start_date 或 end_date' });
+    }
+    const result = await runSummaryDateRange(start_date, end_date);
+    res.json({ code: 200, data: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ code: 500, message: err.message });
+  }
+});
+
 app.post('/api/diet/seed/meal_records', requireAuth, async (req, res) => {
   try {
     const { insertMealRecords } = require('./services/seedService');
     const records = (req.body && req.body.records) || [];
     if (!Array.isArray(records)) return res.status(400).json({ code: 400, message: '缺少 body.records 数组' });
-    const result = await insertMealRecords(records);
+    const result = await insertMealRecords(records, req.user.userId);
     res.json({ code: 200, data: result });
   } catch (err) {
     console.error(err);

@@ -158,8 +158,33 @@ async function runDailySummary(date) {
   return { date: targetDate, userCount: processed };
 }
 
+/**
+ * 对日期范围内每一天执行汇总（便于服务器上大量 Meal_Records 一次性进入图表）
+ * @param {string} startDate - YYYY-MM-DD
+ * @param {string} endDate - YYYY-MM-DD
+ * @returns {Promise<{ days: number, totalUserDays: number }>}
+ */
+async function runSummaryDateRange(startDate, endDate) {
+  if (!startDate || !endDate || startDate > endDate) {
+    throw new Error('start_date 与 end_date 必填且 start_date 不能大于 end_date');
+  }
+  let days = 0;
+  let totalUserDays = 0;
+  let d = startDate;
+  while (d <= endDate) {
+    const r = await runDailySummary(d);
+    if (r && r.userCount > 0) totalUserDays += r.userCount;
+    days += 1;
+    const next = new Date(d + 'T12:00:00Z');
+    next.setUTCDate(next.getUTCDate() + 1);
+    d = next.toISOString().slice(0, 10);
+  }
+  return { days, totalUserDays };
+}
+
 module.exports = {
   getUsersWithUnsummarizedRecords,
   summarizeDailyDiet,
-  runDailySummary
+  runDailySummary,
+  runSummaryDateRange
 };

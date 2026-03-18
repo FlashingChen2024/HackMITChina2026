@@ -20,6 +20,7 @@ export default function Layout() {
         <NavLink to="/charts">统计图表</NavLink>
         <NavLink to="/report">AI 报告</NavLink>
         <NavLink to="/recommendations">个性化建议</NavLink>
+        <NavLink to="/meals">用餐记录</NavLink>
         <NavLink to="/devices">设备管理</NavLink>
         {token ? (
           <button type="button" className="btn" style={{ marginLeft: 'auto' }} onClick={handleLogout}>登出</button>
