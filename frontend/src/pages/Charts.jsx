@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { getCurrentUser } from '../api/client';
 import { fetchChartData, CHART_TYPES } from '../api/charts';
 import ChartBlock from '../components/ChartBlock';
@@ -150,11 +150,16 @@ export default function Charts() {
 function ChartSection({ chartType, start_date, end_date }) {
   const [option, loading, error, isEmpty, load] = useChartOption(chartType, start_date, end_date);
 
+  // 页面打开时自动加载，或者当日期范围改变时自动加载
+  useEffect(() => {
+    load();
+  }, [start_date, end_date, load]);
+
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <h3 style={{ margin: 0 }}>{CHART_LABELS[chartType]}</h3>
-        <button type="button" className="btn" onClick={load} disabled={loading}>加载</button>
+        <button type="button" className="btn" onClick={load} disabled={loading}>刷新</button>
       </div>
       {error && <p className="error">{error}</p>}
       {!loading && !error && isEmpty && (
