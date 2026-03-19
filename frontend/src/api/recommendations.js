@@ -1,10 +1,11 @@
 import { get } from './client';
 
 /**
- * 获取个性化建议；不传 user_id 时后端使用当前登录用户（JWT）
- * @param {number} [user_id]
+ * v4.2：云端 AI 智能营养师建议（统一返回建议）
+ * @param {{ type: 'meal_review'|'daily_alert'|'next_meal' }}
+ * @returns {Promise<{ type: string, advice: string, is_alert: boolean }>}
  */
-export function fetchRecommendations(user_id) {
-  const q = user_id != null && Number.isFinite(Number(user_id)) ? `?user_id=${user_id}` : '';
-  return get(`/api/diet/recommendations${q}`);
+export function fetchAiAdvice({ type }) {
+  const params = new URLSearchParams({ type });
+  return get(`/api/v1/users/me/ai-advice?${params}`);
 }

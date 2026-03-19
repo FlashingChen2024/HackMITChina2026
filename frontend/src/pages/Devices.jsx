@@ -36,7 +36,8 @@ export default function Devices() {
     setList([]);
     try {
       const res = await listBindings();
-      setList(res.data || []);
+      // v4.2：GET /devices 返回 { items: [...] }
+      setList(res.items || []);
     } catch (e) {
       setError(e.message);
     } finally {

@@ -27,7 +27,7 @@ const CHART_TYPES = ['daily_trend', 'weekly_comparison', 'waste_analysis', 'spee
  */
 export function fetchChartData({ start_date, end_date }) {
   const params = new URLSearchParams({ start_date, end_date });
-  return get(`/users/me/statistics/charts?${params}`);
+  return get(`/api/v1/users/me/statistics/charts?${params}`);
 }
 
 export { CHART_TYPES };

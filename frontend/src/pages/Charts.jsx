@@ -1,17 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  TextField,
-  Button,
-  Typography,
-  Alert,
-  Container,
-  Grid,
-  CircularProgress,
-} from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { useState, useCallback } from 'react';
 import { getCurrentUser } from '../api/client';
 import { fetchChartData, CHART_TYPES } from '../api/charts';
 import ChartBlock from '../components/ChartBlock';
@@ -135,112 +122,51 @@ export default function Charts() {
   });
   const [end_date, setEnd_date] = useState(() => new Date().toISOString().slice(0, 10));
 
-  // 日期校验
-  const dateError = start_date && end_date && start_date > end_date ? '开始日期不能晚于结束日期' : null;
-
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ py: 2 }}>
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
-              📊 统计图表
-            </Typography>
-            {currentUser && (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                当前用户：<strong>{currentUser.username}</strong>（ID: {currentUser.userId}）
-              </Alert>
-            )}
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  type="date"
-                  label="开始日期"
-                  value={start_date}
-                  onChange={(e) => setStart_date(e.target.value)}
-                  inputProps={{ max: end_date }}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  type="date"
-                  label="结束日期"
-                  value={end_date}
-                  onChange={(e) => setEnd_date(e.target.value)}
-                  inputProps={{ min: start_date }}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-            </Grid>
-            {dateError && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                ⚠️ {dateError}
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
+    <div>
+      <div className="card">
+        <h2>统计图表</h2>
+        <div className="form-row">
+          {currentUser && <span className="hint">当前用户：{currentUser.username}（ID: {currentUser.userId}）</span>}
+          <label>开始日期</label>
+          <input type="date" value={start_date} onChange={e => setStart_date(e.target.value)} />
+          <label>结束日期</label>
+          <input type="date" value={end_date} onChange={e => setEnd_date(e.target.value)} />
+        </div>
+      </div>
 
-        {!dateError && CHART_TYPES.map(ct => (
-          <ChartSection
-            key={ct}
-            chartType={ct}
-            start_date={start_date}
-            end_date={end_date}
-          />
-        ))}
-      </Box>
-    </Container>
+      {CHART_TYPES.map(ct => (
+        <ChartSection
+          key={ct}
+          chartType={ct}
+          start_date={start_date}
+          end_date={end_date}
+        />
+      ))}
+    </div>
   );
 }
 
 function ChartSection({ chartType, start_date, end_date }) {
   const [option, loading, error, isEmpty, load] = useChartOption(chartType, start_date, end_date);
 
-  // 页面打开时自动加载，或者当日期范围改变时自动加载
-  useEffect(() => {
-    load();
-  }, [start_date, end_date, load]);
-
   return (
-    <Card sx={{ mb: 3 }}>
-      <CardContent>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-            {CHART_LABELS[chartType]}
-          </Typography>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={load}
-            disabled={loading}
-          >
-            刷新
-          </Button>
-        </Box>
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {!loading && !error && isEmpty && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            <Typography variant="body2">
-              该日期范围内无汇总数据。图表显示的是<strong>每日汇总</strong>（含 Mock 与餐盒遥测）：
-              <br />
-              • 若用<strong>遥测</strong>：先绑定设备，运行 <code>bash scripts/test_telemetry_flow.sh</code>（可用 TOKEN=你的Token 以当前用户写入），再对<strong>当日</strong>执行「每日汇总」（POST /api/diet/summary/run，body 传 date 如 2026-03-13）后刷新。
-              <br />
-              • 若用<strong>Mock</strong>：<code>POST /api/diet/seed/meal_records</code> 导入后，对导入日期执行「每日汇总」或运行 <code>bash scripts/seed_mock_meal_records.sh</code>。
-            </Typography>
-          </Alert>
-        )}
-        <Box sx={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {loading ? (
-            <CircularProgress />
-          ) : (
-            <ChartBlock option={option} loading={loading} height="400px" />
-          )}
-        </Box>
-      </CardContent>
-    </Card>
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <h3 style={{ margin: 0 }}>{CHART_LABELS[chartType]}</h3>
+        <button type="button" className="btn" onClick={load} disabled={loading}>加载</button>
+      </div>
+      {error && <p className="error">{error}</p>}
+      {!loading && !error && isEmpty && (
+        <p className="hint">
+          该日期范围内无数据返回。当前图表数据来自云端接口
+          <br />`GET /api/v1/users/me/statistics/charts`
+          <br />请确保日期范围覆盖你的用餐数据，并点击各卡片「加载」。
+        </p>
+      )}
+      <div className="chart-wrap">
+        <ChartBlock option={option} loading={loading} />
+      </div>
+    </div>
   );
 }
