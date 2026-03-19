@@ -20,6 +20,8 @@ type fakeCommunityService struct {
 	createResp   model.Community
 	createErr    error
 	joinErr      error
+	listResp     []service.UserCommunity
+	listErr      error
 	dashboard    service.CommunityDashboard
 	dashboardErr error
 
@@ -28,6 +30,7 @@ type fakeCommunityService struct {
 	lastCreateDesc   string
 	lastJoinID       string
 	lastJoinUserID   string
+	lastListUserID   string
 	lastDashboardID  string
 }
 
@@ -58,6 +61,14 @@ func (f *fakeCommunityService) GetDashboard(_ context.Context, communityID strin
 		return service.CommunityDashboard{}, f.dashboardErr
 	}
 	return f.dashboard, nil
+}
+
+func (f *fakeCommunityService) ListUserCommunities(_ context.Context, userID string) ([]service.UserCommunity, error) {
+	f.lastListUserID = userID
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return f.listResp, nil
 }
 
 func TestCommunityCreateSuccess(t *testing.T) {
@@ -169,5 +180,60 @@ func TestCommunityDashboardSuccess(t *testing.T) {
 	}
 	if len(payload.FoodStats) != 1 || payload.FoodStats[0].FoodName != "西红柿炒鸡蛋" {
 		t.Fatalf("expected one food stats row")
+	}
+}
+
+func TestCommunityListSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := &fakeCommunityService{
+		listResp: []service.UserCommunity{
+			{
+				CommunityID: "community-1",
+				Name:        "减脂圈",
+				Description: "少油少盐",
+				MemberCount: 1,
+			},
+			{
+				CommunityID: "community-2",
+				Name:        "增肌圈",
+				Description: "高蛋白",
+				MemberCount: 2,
+			},
+		},
+	}
+	handler := api.NewCommunityHandler(svc)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-b")
+		c.Next()
+	})
+	router.GET("/api/v1/communities", handler.List)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/communities", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+
+	var payload struct {
+		Items []struct {
+			CommunityID string `json:"community_id"`
+			MemberCount int64  `json:"member_count"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if svc.lastListUserID != "user-b" {
+		t.Fatalf("expected user_id=user-b, got %s", svc.lastListUserID)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(payload.Items))
+	}
+	if payload.Items[0].CommunityID != "community-1" || payload.Items[0].MemberCount != 1 {
+		t.Fatalf("unexpected first item: %+v", payload.Items[0])
 	}
 }

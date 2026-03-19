@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -229,5 +230,50 @@ func TestParseModelJSONResultWithInvalidJSONButRecognizablePattern(t *testing.T)
 	}
 	if advice != "还能及时收到\"吃饱\"的信号哦~" {
 		t.Fatalf("unexpected parsed advice: %s", advice)
+	}
+}
+
+func TestAIAdviceGenerateAdviceFallbackWhenGeneratorUnavailable(t *testing.T) {
+	store := &fakeAIAdviceStore{
+		meal: model.Meal{MealID: "meal-1", DurationMinutes: 20},
+		grids: []model.MealGrid{
+			{GridIndex: 1, FoodName: "炸鸡", IntakeG: 180, TotalCal: 420},
+		},
+		todayTotal: 3000,
+	}
+	svc := NewAIAdviceService(store)
+
+	result, err := svc.GenerateAdvice(context.Background(), "user-1", AdviceTypeMealReview)
+	if err != nil {
+		t.Fatalf("generate advice failed: %v", err)
+	}
+	if strings.TrimSpace(result.Advice) == "" {
+		t.Fatalf("expected fallback advice")
+	}
+	if result.Type != AdviceTypeMealReview {
+		t.Fatalf("unexpected type: %s", result.Type)
+	}
+}
+
+func TestAIAdviceGenerateAdviceFallbackWhenGeneratorErrors(t *testing.T) {
+	store := &fakeAIAdviceStore{
+		meal: model.Meal{MealID: "meal-1", DurationMinutes: 20},
+		grids: []model.MealGrid{
+			{GridIndex: 1, FoodName: "炸鸡", IntakeG: 180, TotalCal: 420},
+		},
+		todayTotal: 3000,
+	}
+	gen := &fakeAITextGenerator{err: errors.New("upstream timeout")}
+	svc := NewAIAdviceService(store, gen)
+
+	result, err := svc.GenerateAdvice(context.Background(), "user-1", AdviceTypeDailyAlert)
+	if err != nil {
+		t.Fatalf("generate advice failed: %v", err)
+	}
+	if strings.TrimSpace(result.Advice) == "" {
+		t.Fatalf("expected fallback advice")
+	}
+	if !result.IsAlert {
+		t.Fatalf("expected fallback daily alert to set is_alert true")
 	}
 }

@@ -20,6 +20,7 @@ func NewRouter(
 	aiAdviceHandler gin.HandlerFunc,
 	createCommunityHandler gin.HandlerFunc,
 	joinCommunityHandler gin.HandlerFunc,
+	listCommunitiesHandler gin.HandlerFunc,
 	communityDashboardHandler gin.HandlerFunc,
 ) *gin.Engine {
 	router := gin.New()
@@ -43,6 +44,7 @@ func NewRouter(
 	authorized.PUT("/meals/:meal_id/foods", putMealFoodsHandler)
 	authorized.POST("/communities/create", createCommunityHandler)
 	authorized.POST("/communities/:community_id/join", joinCommunityHandler)
+	authorized.GET("/communities", listCommunitiesHandler)
 	authorized.GET("/communities/:community_id/dashboard", communityDashboardHandler)
 
 	v1 := router.Group("/api/v1")
@@ -65,6 +67,7 @@ func NewRouter(
 		v1Authorized.PUT("/meals/:meal_id/foods", putMealFoodsHandler)
 		v1Authorized.POST("/communities/create", createCommunityHandler)
 		v1Authorized.POST("/communities/:community_id/join", joinCommunityHandler)
+		v1Authorized.GET("/communities", listCommunitiesHandler)
 		v1Authorized.GET("/communities/:community_id/dashboard", communityDashboardHandler)
 	}
 

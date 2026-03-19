@@ -17,14 +17,14 @@ func (Community) TableName() string {
 
 type CommunityMember struct {
 	ID          uint64    `gorm:"column:id;primaryKey;autoIncrement"`
-	CommunityID string    `gorm:"column:community_id;type:char(36);not null;index:idx_community_members_community_id;uniqueIndex:uk_community_members,priority:1"`
-	UserID      string    `gorm:"column:user_id;type:char(36);not null;index:idx_community_members_user_id;uniqueIndex:uk_community_members,priority:2"`
+	CommunityID string    `gorm:"column:community_id;type:char(36);not null;index:idx_user_communities_community_id;uniqueIndex:uk_user_communities,priority:1"`
+	UserID      string    `gorm:"column:user_id;type:char(36);not null;index:idx_user_communities_user_id;uniqueIndex:uk_user_communities,priority:2"`
 	CreatedAt   time.Time `gorm:"column:created_at;not null"`
 	UpdatedAt   time.Time `gorm:"column:updated_at;not null"`
 }
 
 func (CommunityMember) TableName() string {
-	return "community_members"
+	return "user_communities"
 }
 
 type CommunityFoodAvgStat struct {
@@ -33,4 +33,11 @@ type CommunityFoodAvgStat struct {
 	AvgLeftoverG    float64 `gorm:"column:avg_leftover_g"`
 	AvgIntakeG      float64 `gorm:"column:avg_intake_g"`
 	AvgSpeedGPerMin float64 `gorm:"column:avg_speed_g_per_min"`
+}
+
+type UserCommunityWithMemberCount struct {
+	CommunityID string `gorm:"column:community_id"`
+	Name        string `gorm:"column:name"`
+	Description string `gorm:"column:description"`
+	MemberCount int64  `gorm:"column:member_count"`
 }

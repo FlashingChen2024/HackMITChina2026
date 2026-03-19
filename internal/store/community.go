@@ -73,6 +73,31 @@ func (s *GormCommunityStore) CountMembers(ctx context.Context, communityID strin
 	return count, nil
 }
 
+func (s *GormCommunityStore) ListUserCommunities(
+	ctx context.Context,
+	userID string,
+) ([]model.UserCommunityWithMemberCount, error) {
+	var items []model.UserCommunityWithMemberCount
+
+	if err := s.db.WithContext(ctx).
+		Table("communities AS c").
+		Select(`
+			c.community_id AS community_id,
+			c.name AS name,
+			c.description AS description,
+			COUNT(all_uc.user_id) AS member_count
+		`).
+		Joins("INNER JOIN user_communities AS mine_uc ON mine_uc.community_id = c.community_id AND mine_uc.user_id = ?", userID).
+		Joins("LEFT JOIN user_communities AS all_uc ON all_uc.community_id = c.community_id").
+		Group("c.community_id, c.name, c.description, c.created_at").
+		Order("c.created_at DESC").
+		Scan(&items).Error; err != nil {
+		return nil, fmt.Errorf("list user communities: %w", err)
+	}
+
+	return items, nil
+}
+
 func (s *GormCommunityStore) ListDashboardStats(
 	ctx context.Context,
 	communityID string,
@@ -89,7 +114,7 @@ func (s *GormCommunityStore) ListDashboardStats(
 			AVG(CASE WHEN m.duration_minutes > 0 THEN mg.intake_g * 1.0 / m.duration_minutes ELSE 0 END) AS avg_speed_g_per_min
 		`).
 		Joins("INNER JOIN meals AS m ON m.meal_id = mg.meal_id").
-		Joins("INNER JOIN community_members AS cm ON cm.user_id = m.user_id").
+		Joins("INNER JOIN user_communities AS cm ON cm.user_id = m.user_id").
 		Where("cm.community_id = ? AND mg.food_name <> ''", communityID).
 		Group("mg.food_name").
 		Order("mg.food_name ASC").

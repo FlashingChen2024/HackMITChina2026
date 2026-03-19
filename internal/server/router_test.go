@@ -33,6 +33,7 @@ func buildRouter(jwtMiddleware gin.HandlerFunc) *gin.Engine {
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
 	)
 }
 
@@ -147,6 +148,13 @@ func TestCommunityRoutes(t *testing.T) {
 		t.Fatalf("expected join community status 200, got %d", joinResp.Code)
 	}
 
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/communities", nil)
+	listResp := httptest.NewRecorder()
+	router.ServeHTTP(listResp, listReq)
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("expected list communities status 200, got %d", listResp.Code)
+	}
+
 	dashboardReq := httptest.NewRequest(http.MethodGet, "/api/v1/communities/community-1/dashboard", nil)
 	dashboardResp := httptest.NewRecorder()
 	router.ServeHTTP(dashboardResp, dashboardReq)
@@ -178,6 +186,7 @@ func TestProtectedRoutesRequireJWT(t *testing.T) {
 		{method: http.MethodPut, path: "/api/v1/meals/meal-1/foods", body: `{"grids":[]}`},
 		{method: http.MethodPost, path: "/api/v1/communities/create", body: `{"name":"MIT","description":"demo"}`},
 		{method: http.MethodPost, path: "/api/v1/communities/community-1/join"},
+		{method: http.MethodGet, path: "/api/v1/communities"},
 		{method: http.MethodGet, path: "/api/v1/communities/community-1/dashboard"},
 	}
 

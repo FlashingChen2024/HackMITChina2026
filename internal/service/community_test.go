@@ -17,6 +17,9 @@ type fakeCommunityStore struct {
 	getErr             error
 	memberCount        int64
 	memberCountErr     error
+	userCommunities    []model.UserCommunityWithMemberCount
+	userCommunitiesErr error
+	lastListUserID     string
 	stats              []model.CommunityFoodAvgStat
 	statsErr           error
 	joinErr            error
@@ -50,6 +53,14 @@ func (f *fakeCommunityStore) CountMembers(_ context.Context, _ string) (int64, e
 		return 0, f.memberCountErr
 	}
 	return f.memberCount, nil
+}
+
+func (f *fakeCommunityStore) ListUserCommunities(_ context.Context, userID string) ([]model.UserCommunityWithMemberCount, error) {
+	f.lastListUserID = userID
+	if f.userCommunitiesErr != nil {
+		return nil, f.userCommunitiesErr
+	}
+	return f.userCommunities, nil
 }
 
 func (f *fakeCommunityStore) ListDashboardStats(_ context.Context, _ string) ([]model.CommunityFoodAvgStat, error) {
@@ -143,5 +154,40 @@ func TestCommunityServiceCreateCommunityRejectsEmptyName(t *testing.T) {
 	_, err := svc.CreateCommunity(context.Background(), "user-1", " ", "demo")
 	if err != ErrInvalidInput {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestCommunityServiceListUserCommunities(t *testing.T) {
+	store := &fakeCommunityStore{
+		userCommunities: []model.UserCommunityWithMemberCount{
+			{
+				CommunityID: "community-1",
+				Name:        "减脂圈",
+				Description: "少油少盐",
+				MemberCount: 2,
+			},
+			{
+				CommunityID: "community-2",
+				Name:        "增肌圈",
+				Description: "高蛋白",
+				MemberCount: 3,
+			},
+		},
+	}
+	svc := NewCommunityService(store)
+
+	items, err := svc.ListUserCommunities(context.Background(), " user-b ")
+	if err != nil {
+		t.Fatalf("list user communities failed: %v", err)
+	}
+
+	if store.lastListUserID != "user-b" {
+		t.Fatalf("expected trimmed user_id user-b, got %s", store.lastListUserID)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 communities, got %d", len(items))
+	}
+	if items[0].CommunityID != "community-1" || items[0].MemberCount != 2 {
+		t.Fatalf("unexpected first community item: %+v", items[0])
 	}
 }

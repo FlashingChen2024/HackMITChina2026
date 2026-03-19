@@ -98,6 +98,7 @@ func main() {
 		aiAdviceHandler.Get,
 		communityHandler.Create,
 		communityHandler.Join,
+		communityHandler.List,
 		communityHandler.Dashboard,
 	)
 

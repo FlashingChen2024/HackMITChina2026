@@ -13,6 +13,7 @@ type CommunityStore interface {
 	GetCommunityByID(ctx context.Context, communityID string) (model.Community, error)
 	JoinCommunity(ctx context.Context, communityID string, userID string) error
 	CountMembers(ctx context.Context, communityID string) (int64, error)
+	ListUserCommunities(ctx context.Context, userID string) ([]model.UserCommunityWithMemberCount, error)
 	ListDashboardStats(ctx context.Context, communityID string) ([]model.CommunityFoodAvgStat, error)
 }
 
@@ -21,6 +22,13 @@ type CommunityDashboard struct {
 	CommunityName string
 	MemberCount   int64
 	FoodAvgStats  []model.CommunityFoodAvgStat
+}
+
+type UserCommunity struct {
+	CommunityID string
+	Name        string
+	Description string
+	MemberCount int64
 }
 
 type CommunityService struct {
@@ -113,4 +121,28 @@ func (s *CommunityService) GetDashboard(ctx context.Context, communityID string)
 		MemberCount:   memberCount,
 		FoodAvgStats:  stats,
 	}, nil
+}
+
+func (s *CommunityService) ListUserCommunities(ctx context.Context, userID string) ([]UserCommunity, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil, ErrInvalidInput
+	}
+
+	items, err := s.store.ListUserCommunities(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]UserCommunity, 0, len(items))
+	for _, item := range items {
+		result = append(result, UserCommunity{
+			CommunityID: item.CommunityID,
+			Name:        item.Name,
+			Description: item.Description,
+			MemberCount: item.MemberCount,
+		})
+	}
+
+	return result, nil
 }

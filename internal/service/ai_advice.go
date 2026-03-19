@@ -82,12 +82,24 @@ func (s *AIAdviceService) GenerateAdvice(
 		return AIAdviceResult{}, err
 	}
 	if s.generator == nil {
-		return AIAdviceResult{}, ErrAIUnavailable
+		fallbackAdvice, fallbackAlert := buildFallbackAdvice(normalizedAdviceType)
+		return AIAdviceResult{
+			Type:    normalizedAdviceType,
+			Advice:  fallbackAdvice,
+			IsAlert: fallbackAlert,
+			Prompt:  prompt,
+		}, nil
 	}
 
 	rawAdvice, err := s.generator.Generate(ctx, prompt)
 	if err != nil {
-		return AIAdviceResult{}, err
+		fallbackAdvice, fallbackAlert := buildFallbackAdvice(normalizedAdviceType)
+		return AIAdviceResult{
+			Type:    normalizedAdviceType,
+			Advice:  fallbackAdvice,
+			IsAlert: fallbackAlert,
+			Prompt:  prompt,
+		}, nil
 	}
 
 	parsedAdvice, parsedAlert, ok := parseModelJSONResult(rawAdvice)
@@ -101,7 +113,13 @@ func (s *AIAdviceService) GenerateAdvice(
 		isAlert = inferIsAlertFromText(normalizedAdviceType, adviceText)
 	}
 	if adviceText == "" {
-		return AIAdviceResult{}, ErrAIResponseInvalid
+		fallbackAdvice, fallbackAlert := buildFallbackAdvice(normalizedAdviceType)
+		return AIAdviceResult{
+			Type:    normalizedAdviceType,
+			Advice:  fallbackAdvice,
+			IsAlert: fallbackAlert,
+			Prompt:  prompt,
+		}, nil
 	}
 
 	return AIAdviceResult{
@@ -110,6 +128,17 @@ func (s *AIAdviceService) GenerateAdvice(
 		IsAlert: isAlert,
 		Prompt:  prompt,
 	}, nil
+}
+
+func buildFallbackAdvice(adviceType string) (string, bool) {
+	switch adviceType {
+	case AdviceTypeDailyAlert:
+		return "今天这顿有点放飞，下一餐记得减油减盐，多补蔬菜和水分。", true
+	case AdviceTypeNextMeal:
+		return "下一餐建议：一格优质蛋白、一格粗粮、两格蔬菜，节奏放慢一点。", false
+	default:
+		return "这顿吃得挺努力，建议下一次放慢节奏，蔬菜再多一格会更稳。", false
+	}
 }
 
 func (s *AIAdviceService) BuildPrompt(ctx context.Context, userID string, adviceType string) (string, error) {

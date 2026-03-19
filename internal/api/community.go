@@ -17,6 +17,7 @@ type CommunityService interface {
 	CreateCommunity(ctx context.Context, userID string, name string, description string) (model.Community, error)
 	JoinCommunity(ctx context.Context, communityID string, userID string) error
 	GetDashboard(ctx context.Context, communityID string) (service.CommunityDashboard, error)
+	ListUserCommunities(ctx context.Context, userID string) ([]service.UserCommunity, error)
 }
 
 type CommunityHandler struct {
@@ -34,6 +35,13 @@ type dashboardFoodAvgStatResponse struct {
 	AvgLeftoverG    float64 `json:"avg_leftover_g"`
 	AvgIntakeG      float64 `json:"avg_intake_g"`
 	AvgSpeedGPerMin float64 `json:"avg_speed_g_per_min"`
+}
+
+type userCommunityItemResponse struct {
+	CommunityID string `json:"community_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	MemberCount int64  `json:"member_count"`
 }
 
 func NewCommunityHandler(service CommunityService) *CommunityHandler {
@@ -134,5 +142,38 @@ func (h *CommunityHandler) Dashboard(c *gin.Context) {
 		"community_name": dashboard.CommunityName,
 		"member_count":   dashboard.MemberCount,
 		"food_avg_stats": stats,
+	})
+}
+
+func (h *CommunityHandler) List(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("user_id"))
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token context"})
+		return
+	}
+
+	communities, err := h.service.ListUserCommunities(c.Request.Context(), userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list communities failed"})
+		}
+		return
+	}
+
+	items := make([]userCommunityItemResponse, 0, len(communities))
+	for _, item := range communities {
+		items = append(items, userCommunityItemResponse{
+			CommunityID: item.CommunityID,
+			Name:        item.Name,
+			Description: item.Description,
+			MemberCount: item.MemberCount,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"items": items,
 	})
 }
