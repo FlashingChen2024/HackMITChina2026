@@ -7,12 +7,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8080',
-        changeOrigin: true
+        // 开发环境优先代理到云端 API，避免浏览器 CORS 导致的 Failed to fetch
+        target: process.env.VITE_PROXY_TARGET || 'https://api.mit.chenyuxia.com',
+        changeOrigin: true,
+        secure: true
       },
       '/health': {
-        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8080',
-        changeOrigin: true
+        target: process.env.VITE_PROXY_TARGET || 'https://api.mit.chenyuxia.com',
+        changeOrigin: true,
+        secure: true
       }
     }
   }

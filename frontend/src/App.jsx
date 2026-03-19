@@ -6,6 +6,7 @@ import Report from './pages/Report';
 import Recommendations from './pages/Recommendations';
 import Meals from './pages/Meals';
 import Devices from './pages/Devices';
+import Communities from './pages/Communities';
 import Login from './pages/Login';
 import { getToken } from './api/client';
 import './App.css';
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="recommendations" element={<RequireAuth><Recommendations /></RequireAuth>} />
         <Route path="meals" element={<RequireAuth><Meals /></RequireAuth>} />
         <Route path="devices" element={<RequireAuth><Devices /></RequireAuth>} />
+        <Route path="communities" element={<RequireAuth><Communities /></RequireAuth>} />
       </Route>
     </Routes>
   );

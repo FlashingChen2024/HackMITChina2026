@@ -22,6 +22,7 @@ export default function Layout() {
         <NavLink to="/recommendations">个性化建议</NavLink>
         <NavLink to="/meals">用餐记录</NavLink>
         <NavLink to="/devices">设备管理</NavLink>
+        <NavLink to="/communities">社区功能</NavLink>
         {token ? (
           <button type="button" className="btn" style={{ marginLeft: 'auto' }} onClick={handleLogout}>登出</button>
         ) : (

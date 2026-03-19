@@ -1,19 +1,15 @@
 /**
- * AI 报告 API
+ * v4.2：AI 智能营养师（用于“AI 报告”页面）
  */
 
-import { get, post } from './client';
-
-export function generateReport(body) {
-  return post('/api/diet/analysis/generate', body);
-}
+import { get } from './client';
 
 /**
- * 获取报告；不传 user_id 时后端使用当前登录用户（JWT）
+ * 获取 AI 建议（报告/提醒/下一顿）
+ * @param {{ type: 'meal_review'|'daily_alert'|'next_meal' }} params
+ * @returns {Promise<{ type: string, advice: string, is_alert: boolean }>}
  */
-export function getReport(date, report_type, user_id) {
-  const params = new URLSearchParams({ date });
-  if (report_type != null) params.set('report_type', report_type);
-  if (user_id != null && Number.isFinite(Number(user_id))) params.set('user_id', String(user_id));
-  return get(`/api/diet/analysis/report?${params}`);
+export function fetchAiAdvice({ type }) {
+  const params = new URLSearchParams({ type });
+  return get(`/api/v1/users/me/ai-advice?${params}`);
 }

@@ -8,6 +8,7 @@ export default function Home() {
         <li><a href="/report">AI 报告</a>：生成并查看饮食分析报告</li>
         <li><a href="/recommendations">个性化建议</a>：基于最近报告与诊断的建议列表</li>
         <li><a href="/devices">设备管理</a>：智能餐盒设备绑定与解绑</li>
+        <li><a href="/communities">社区功能</a>：创建社区、输入社区ID加入、查看和管理我的社区</li>
       </ul>
     </div>
   );

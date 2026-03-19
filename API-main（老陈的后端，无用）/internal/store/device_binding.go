@@ -68,3 +68,31 @@ func (s *GormDeviceBindingStore) IsDeviceBoundToOtherUser(
 	}
 	return binding.UserID != userID, nil
 }
+
+/**
+ * v4.2：按 user_id 列出已绑定设备
+ */
+func (s *GormDeviceBindingStore) ListByUserID(ctx context.Context, userID string) ([]model.DeviceBinding, error) {
+	var bindings []model.DeviceBinding
+	if err := s.db.WithContext(ctx).
+		Model(&model.DeviceBinding{}).
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Find(&bindings).Error; err != nil {
+		return nil, fmt.Errorf("list device bindings by user id: %w", err)
+	}
+	return bindings, nil
+}
+
+/**
+ * v4.2：删除指定 user_id 的 device_id 绑定记录
+ */
+func (s *GormDeviceBindingStore) DeleteByUserIDAndDeviceID(ctx context.Context, userID string, deviceID string) (int64, error) {
+	tx := s.db.WithContext(ctx).
+		Where("user_id = ? AND device_id = ?", userID, deviceID).
+		Delete(&model.DeviceBinding{})
+	if tx.Error != nil {
+		return 0, fmt.Errorf("delete device binding: %w", tx.Error)
+	}
+	return tx.RowsAffected, nil
+}

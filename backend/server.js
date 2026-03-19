@@ -319,18 +319,107 @@ app.get('/api/diet/statistics/charts', requireAuth, async (req, res) => {
   }
 });
 
-// ========== 社区（v4.0 暂缓，占位返回） ==========
+// ========== 社区（创建 / 加入 / 查看 / 管理） ==========
 
-app.post('/api/v1/communities/create', requireAuth, (req, res) => {
-  res.status(503).json({ error: '社区板块暂缓推进' });
+/**
+ * 创建社区：返回 community_id，其他人需要输入该 ID 才能加入
+ * POST /api/v1/communities/create
+ */
+app.post('/api/v1/communities/create', requireAuth, async (req, res) => {
+  try {
+    const { createCommunity } = require('./services/communityService');
+    const { name, description } = req.body || {};
+    const result = await createCommunity(req.user.userId, name, description);
+    res.status(200).json(result);
+  } catch (err) {
+    const msg = err.message || 'create community failed';
+    const status = msg.includes('required') || msg.includes('invalid') ? 400 : 500;
+    res.status(status).json({ error: msg });
+  }
 });
 
-app.post('/api/v1/communities/:community_id/join', requireAuth, (req, res) => {
-  res.status(503).json({ error: '社区板块暂缓推进' });
+/**
+ * 输入 community_id 加入社区
+ * POST /api/v1/communities/:community_id/join
+ */
+app.post('/api/v1/communities/:community_id/join', requireAuth, async (req, res) => {
+  try {
+    const { joinCommunity } = require('./services/communityService');
+    const result = await joinCommunity(req.user.userId, req.params.community_id);
+    res.status(200).json(result);
+  } catch (err) {
+    const msg = err.message || 'join community failed';
+    const status = msg.includes('not found') ? 404 : msg.includes('required') || msg.includes('invalid') ? 400 : 500;
+    res.status(status).json({ error: msg });
+  }
 });
 
+/**
+ * 查看我加入的社区（含 role 与 member_count）
+ * GET /api/v1/communities/mine
+ */
+app.get('/api/v1/communities/mine', requireAuth, async (req, res) => {
+  try {
+    const { listMyCommunities } = require('./services/communityService');
+    const items = await listMyCommunities(req.user.userId);
+    res.status(200).json({ items });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'list communities failed' });
+  }
+});
+
+/**
+ * 查看我创建的社区（管理视图）
+ * GET /api/v1/communities/owned
+ */
+app.get('/api/v1/communities/owned', requireAuth, async (req, res) => {
+  try {
+    const { listOwnedCommunities } = require('./services/communityService');
+    const items = await listOwnedCommunities(req.user.userId);
+    res.status(200).json({ items });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'list owned communities failed' });
+  }
+});
+
+/**
+ * 管理我的社区：更新社区信息（仅 owner）
+ * PATCH /api/v1/communities/:community_id
+ */
+app.patch('/api/v1/communities/:community_id', requireAuth, async (req, res) => {
+  try {
+    const { updateOwnedCommunity } = require('./services/communityService');
+    const result = await updateOwnedCommunity(req.user.userId, req.params.community_id, req.body || {});
+    res.status(200).json(result);
+  } catch (err) {
+    const msg = err.message || 'update community failed';
+    const status = msg.includes('no permission') || msg.includes('not found') ? 404 : msg.includes('required') || msg.includes('invalid') ? 400 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
+/**
+ * 管理我的社区：解散社区（仅 owner）
+ * DELETE /api/v1/communities/:community_id
+ */
+app.delete('/api/v1/communities/:community_id', requireAuth, async (req, res) => {
+  try {
+    const { dissolveOwnedCommunity } = require('./services/communityService');
+    const result = await dissolveOwnedCommunity(req.user.userId, req.params.community_id);
+    res.status(200).json(result);
+  } catch (err) {
+    const msg = err.message || 'delete community failed';
+    const status = msg.includes('no permission') || msg.includes('not found') ? 404 : msg.includes('required') || msg.includes('invalid') ? 400 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
+/**
+ * 社区看板（当前保留占位）
+ * GET /api/v1/communities/:community_id/dashboard
+ */
 app.get('/api/v1/communities/:community_id/dashboard', requireAuth, (req, res) => {
-  res.status(503).json({ error: '社区板块暂缓推进' });
+  res.status(503).json({ error: '社区看板暂未实现' });
 });
 
 app.listen(PORT, () => {

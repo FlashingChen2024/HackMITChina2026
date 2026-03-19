@@ -64,12 +64,21 @@ func main() {
 	authHandler := api.NewAuthHandler(authService)
 	testAuthHandler := api.NewTestAuthHandler()
 	jwtAuthMiddleware := middleware.JWTAuthMiddleware(authService)
+
+	deviceListHandler := deviceBindingHandler.List
+	unbindDeviceHandler := deviceBindingHandler.Unbind
+
+	aiAdviceService := service.NewAiAdviceService()
+	aiAdviceHandler := api.NewAiAdviceHandler(aiAdviceService)
+
 	router := server.NewRouter(
 		pingHandler.Handle,
 		telemetryHandler.Handle,
 		authHandler.Register,
 		authHandler.Login,
 		deviceBindingHandler.Bind,
+		deviceListHandler,
+		unbindDeviceHandler,
 		testAuthHandler.Handle,
 		jwtAuthMiddleware,
 		mealsHandler.PutFoods,
@@ -77,6 +86,7 @@ func main() {
 		mealsHandler.GetByID,
 		mealsHandler.Trajectory,
 		mealsHandler.StatisticsCharts,
+		aiAdviceHandler.GetMeAiAdvice,
 		communityHandler.Create,
 		communityHandler.Join,
 		communityHandler.Dashboard,

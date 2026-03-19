@@ -159,9 +159,9 @@ function ChartSection({ chartType, start_date, end_date }) {
       {error && <p className="error">{error}</p>}
       {!loading && !error && isEmpty && (
         <p className="hint">
-          该日期范围内无汇总数据。图表显示的是<strong>每日汇总</strong>（含 Mock 与餐盒遥测）：
-          <br />· 若用<strong>遥测</strong>：先绑定设备，运行 <code>bash scripts/test_telemetry_flow.sh</code>（可用 TOKEN=你的Token 以当前用户写入），再对<strong>当日</strong>执行「每日汇总」（POST /api/diet/summary/run，body 传 date 如 2026-03-13）后刷新。
-          <br />· 若用<strong>Mock</strong>：<code>POST /api/diet/seed/meal_records</code> 导入后，对导入日期执行「每日汇总」或运行 <code>bash scripts/seed_mock_meal_records.sh</code>。
+          该日期范围内无数据返回。当前图表数据来自云端接口
+          <br />`GET /api/v1/users/me/statistics/charts`
+          <br />请确保日期范围覆盖你的用餐数据，并点击各卡片「加载」。
         </p>
       )}
       <div className="chart-wrap">

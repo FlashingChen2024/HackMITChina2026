@@ -1,20 +1,21 @@
 import { useState } from 'react';
 import { getCurrentUser } from '../api/client';
-import { fetchRecommendations } from '../api/recommendations';
+import { fetchAiAdvice } from '../api/recommendations';
 
 export default function Recommendations() {
   const currentUser = getCurrentUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [list, setList] = useState([]);
+  const [advice, setAdvice] = useState(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
-    setList([]);
+    setAdvice(null);
     try {
-      const res = await fetchRecommendations();
-      setList(res.data || []);
+      // v4.2：个性化建议页面默认展示 next_meal（明天/未来 3 天的 4 格菜谱推荐）
+      const res = await fetchAiAdvice({ type: 'next_meal' });
+      setAdvice(res || null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -32,26 +33,11 @@ export default function Recommendations() {
         </div>
         {error && <p className="error">{error}</p>}
       </div>
-
-      {list.length > 0 && (
+      {advice && (
         <div className="card">
-          <ul className="list">
-            {list.map((item, i) => (
-              <li key={i}>
-                <div>
-                  <span className={`badge badge-${item.priority === 'high' ? 'high' : item.priority === 'medium' ? 'medium' : 'low'}`}>
-                    {item.priority || 'normal'}
-                  </span>
-                  {' '}{item.message}
-                  {item.suggestions?.length > 0 && (
-                    <ul style={{ margin: '0.5rem 0 0 1rem', padding: 0 }}>
-                      {item.suggestions.map((s, j) => <li key={j}>{s}</li>)}
-                    </ul>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <h3>AI 建议</h3>
+          <p className="hint">类型：{advice.type}（{advice.is_alert ? '提醒' : '建议'}）</p>
+          <pre className="report-text">{advice.advice}</pre>
         </div>
       )}
     </div>

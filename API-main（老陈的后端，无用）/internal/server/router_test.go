@@ -14,22 +14,26 @@ import (
 
 func buildRouter(jwtMiddleware gin.HandlerFunc) *gin.Engine {
 	pingHandler := api.NewPingHandler()
+	okHandler := func(c *gin.Context) { c.Status(http.StatusOK) }
 	return server.NewRouter(
 		pingHandler.Handle,
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
+		okHandler, // telemetryHandler
+		okHandler, // registerHandler
+		okHandler, // loginHandler
+		okHandler, // bindDeviceHandler
+		okHandler, // listDevicesHandler
+		okHandler, // unbindDeviceHandler
+		okHandler, // testAuthHandler
 		jwtMiddleware,
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
-		func(c *gin.Context) { c.Status(http.StatusOK) },
+		okHandler, // putMealFoodsHandler
+		okHandler, // listMealsHandler
+		okHandler, // mealDetailHandler
+		okHandler, // mealTrajectoryHandler
+		okHandler, // statisticsChartsHandler
+		okHandler, // aiAdviceHandler
+		okHandler, // createCommunityHandler
+		okHandler, // joinCommunityHandler
+		okHandler, // communityDashboardHandler
 	)
 }
 

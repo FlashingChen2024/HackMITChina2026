@@ -1,40 +1,22 @@
 import { useState } from 'react';
 import { getCurrentUser } from '../api/client';
-import { generateReport, getReport } from '../api/report';
+import { fetchAiAdvice } from '../api/report';
 
 export default function Report() {
   const currentUser = getCurrentUser();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [reportType, setReportType] = useState('daily');
+  const [reportType, setReportType] = useState('meal_review');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [data, setData] = useState(null);
+  const [advice, setAdvice] = useState(null);
 
-  const handleGenerate = async () => {
+  const handleFetch = async () => {
     setLoading(true);
     setError(null);
-    setData(null);
+    setAdvice(null);
     try {
-      const res = await generateReport({
-        date,
-        report_type: reportType,
-        force_fallback: false
-      });
-      setData(res.data);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGet = async () => {
-    setLoading(true);
-    setError(null);
-    setData(null);
-    try {
-      const res = await getReport(date, reportType);
-      setData(res.data?.analysis_result || res.data);
+      const res = await fetchAiAdvice({ type: reportType });
+      setAdvice(res || null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -52,38 +34,20 @@ export default function Report() {
           <input type="date" value={date} onChange={e => setDate(e.target.value)} />
           <label>类型</label>
           <select value={reportType} onChange={e => setReportType(e.target.value)}>
-            <option value="daily">日报</option>
-            <option value="weekly">周报</option>
+            <option value="meal_review">餐次点评（meal_review）</option>
+            <option value="daily_alert">每日预警（daily_alert）</option>
+            <option value="next_meal">下一餐建议（next_meal）</option>
           </select>
-          <button type="button" className="btn" onClick={handleGenerate} disabled={loading}>生成报告</button>
-          <button type="button" className="btn" onClick={handleGet} disabled={loading}>查询已有</button>
+          <button type="button" className="btn" onClick={handleFetch} disabled={loading}>获取 AI</button>
         </div>
         {error && <p className="error">{error}</p>}
       </div>
 
-      {data && (
+      {advice && (
         <div className="card">
-          <h3>报告内容</h3>
-          {typeof data === 'string' && <pre className="report-text">{data}</pre>}
-          {data.analysis_result && typeof data.analysis_result === 'string' && <pre className="report-text">{data.analysis_result}</pre>}
-          {data.diet_evaluation && <p><strong>评价：</strong>{data.diet_evaluation}</p>}
-          {data.improvement_measures?.length > 0 && (
-            <div>
-              <strong>改进措施：</strong>
-              <ul>{data.improvement_measures.map((m, i) => <li key={i}>{m}</li>)}</ul>
-            </div>
-          )}
-          {data.next_week_goals?.length > 0 && (
-            <div>
-              <strong>下周目标：</strong>
-              <ul>{data.next_week_goals.map((g, i) => <li key={i}>{g}</li>)}</ul>
-            </div>
-          )}
-          {(data.nutrition_score != null || data.waste_score != null || data.speed_score != null) && (
-            <p>
-              营养 {data.nutrition_score} 分 · 浪费 {data.waste_score} 分 · 速度 {data.speed_score} 分
-            </p>
-          )}
+          <h3>AI 建议内容</h3>
+          <p className="hint">类型：{advice.type}（{advice.is_alert ? '提醒' : '建议'}）</p>
+          <pre className="report-text">{advice.advice}</pre>
         </div>
       )}
     </div>
