@@ -56,6 +56,22 @@ func main() {
 	mealQueryStore := store.NewGormMealQueryStore(mysqlDB)
 	mealQueryService := service.NewMealQueryService(mealQueryStore)
 	mealsHandler := api.NewMealsHandler(mealQueryService)
+	aiAdviceStore := store.NewGormAIAdviceStore(mysqlDB)
+	var aiGenerator service.AITextGenerator
+	aiClient, aiErr := service.NewOpenAICompatibleClient(service.AIModelClientConfig{
+		BaseURL:     cfg.AIBaseURL,
+		Model:       cfg.AIModel,
+		APIKey:      cfg.AIAPIKey,
+		Temperature: cfg.AITemperature,
+	})
+	if aiErr != nil {
+		log.Printf("ai client disabled: %v", aiErr)
+	} else {
+		aiGenerator = aiClient
+		log.Printf("ai client enabled with base_url=%s model=%s", cfg.AIBaseURL, cfg.AIModel)
+	}
+	aiAdviceService := service.NewAIAdviceService(aiAdviceStore, aiGenerator)
+	aiAdviceHandler := api.NewAIAdviceHandler(aiAdviceService, log.Default())
 	communityStore := store.NewGormCommunityStore(mysqlDB)
 	communityService := service.NewCommunityService(communityStore)
 	communityHandler := api.NewCommunityHandler(communityService)
@@ -70,6 +86,8 @@ func main() {
 		authHandler.Register,
 		authHandler.Login,
 		deviceBindingHandler.Bind,
+		deviceBindingHandler.List,
+		deviceBindingHandler.Unbind,
 		testAuthHandler.Handle,
 		jwtAuthMiddleware,
 		mealsHandler.PutFoods,
@@ -77,6 +95,7 @@ func main() {
 		mealsHandler.GetByID,
 		mealsHandler.Trajectory,
 		mealsHandler.StatisticsCharts,
+		aiAdviceHandler.Get,
 		communityHandler.Create,
 		communityHandler.Join,
 		communityHandler.Dashboard,

@@ -34,11 +34,18 @@ cd backend
 
 - `Dockerfile`
 - `docker-compose.deploy.yml`
+- `.env.example`
+
+先创建环境变量文件（按需修改，尤其是 `AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL`）：
+
+```bash
+cp .env.example .env
+```
 
 执行：
 
 ```bash
-docker compose -f docker-compose.deploy.yml up -d --build
+docker compose --env-file .env -f docker-compose.deploy.yml up -d --build
 ```
 
 ### 2.3 健康检查
@@ -57,16 +64,16 @@ curl http://127.0.0.1:8080/api/v1/ping
 
 ```bash
 # 查看容器状态
-docker compose -f docker-compose.deploy.yml ps
+docker compose --env-file .env -f docker-compose.deploy.yml ps
 
 # 查看后端日志
-docker compose -f docker-compose.deploy.yml logs -f api
+docker compose --env-file .env -f docker-compose.deploy.yml logs -f api
 
 # 重启后端服务
-docker compose -f docker-compose.deploy.yml restart api
+docker compose --env-file .env -f docker-compose.deploy.yml restart api
 
 # 停止服务
-docker compose -f docker-compose.deploy.yml down
+docker compose --env-file .env -f docker-compose.deploy.yml down
 ```
 
 ### 2.5 升级与回滚
@@ -75,14 +82,14 @@ docker compose -f docker-compose.deploy.yml down
 
 ```bash
 git pull
-docker compose -f docker-compose.deploy.yml up -d --build api
+docker compose --env-file .env -f docker-compose.deploy.yml up -d --build api
 ```
 
 回滚（回到指定提交）：
 
 ```bash
 git checkout <commit-id>
-docker compose -f docker-compose.deploy.yml up -d --build api
+docker compose --env-file .env -f docker-compose.deploy.yml up -d --build api
 ```
 
 ### 2.6 数据备份（MySQL）
@@ -129,6 +136,10 @@ MYSQL_DSN=root:963487158835@tcp(127.0.0.1:3306)/kxyz?charset=utf8mb4&parseTime=T
 REDIS_ADDR=127.0.0.1:6379
 REDIS_PASSWORD=
 REDIS_DB=0
+AI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4o-mini
+AI_API_KEY=<your-api-key>
+AI_TEMPERATURE=0.7
 ```
 
 ### 3.3 systemd 服务文件
@@ -176,7 +187,7 @@ sudo systemctl status kxyz-backend
 先看应用日志，再看 MySQL/Redis 容器日志：
 
 ```bash
-docker compose -f docker-compose.deploy.yml logs --tail=200 api
-docker compose -f docker-compose.deploy.yml logs --tail=200 mysql
-docker compose -f docker-compose.deploy.yml logs --tail=200 redis
+docker compose --env-file .env -f docker-compose.deploy.yml logs --tail=200 api
+docker compose --env-file .env -f docker-compose.deploy.yml logs --tail=200 mysql
+docker compose --env-file .env -f docker-compose.deploy.yml logs --tail=200 redis
 ```

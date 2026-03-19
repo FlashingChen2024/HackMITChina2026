@@ -13,11 +13,14 @@ import (
 var (
 	ErrDeviceNotBound       = errors.New("device not bound")
 	ErrDeviceBoundToAnother = errors.New("device already bound to another user")
+	ErrDeviceForbidden      = errors.New("forbidden to operate this device")
 )
 
 type DeviceBindingStore interface {
 	GetByDeviceID(ctx context.Context, deviceID string) (model.DeviceBinding, error)
+	ListByUserID(ctx context.Context, userID string) ([]model.DeviceBinding, error)
 	BindDevice(ctx context.Context, deviceID string, userID string) error
+	UnbindDevice(ctx context.Context, deviceID string, userID string) (bool, error)
 	IsDeviceBoundToOtherUser(ctx context.Context, deviceID string, userID string) (bool, error)
 }
 
@@ -47,6 +50,50 @@ func (s *DeviceBindingService) BindDevice(ctx context.Context, userID string, de
 	if err := s.store.BindDevice(ctx, deviceID, userID); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *DeviceBindingService) ListDevices(ctx context.Context, userID string) ([]string, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil, ErrInvalidInput
+	}
+
+	bindings, err := s.store.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	deviceIDs := make([]string, 0, len(bindings))
+	for _, binding := range bindings {
+		deviceIDs = append(deviceIDs, binding.DeviceID)
+	}
+	return deviceIDs, nil
+}
+
+func (s *DeviceBindingService) UnbindDevice(ctx context.Context, userID string, deviceID string) error {
+	userID = strings.TrimSpace(userID)
+	deviceID = normalizeDeviceID(deviceID)
+	if userID == "" || deviceID == "" {
+		return ErrInvalidInput
+	}
+
+	boundToOther, err := s.store.IsDeviceBoundToOtherUser(ctx, deviceID, userID)
+	if err != nil {
+		return err
+	}
+	if boundToOther {
+		return ErrDeviceForbidden
+	}
+
+	deleted, err := s.store.UnbindDevice(ctx, deviceID, userID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrDeviceNotBound
+	}
+
 	return nil
 }
 

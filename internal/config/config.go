@@ -11,6 +11,9 @@ const (
 	defaultRedisAddr        = "127.0.0.1:6379"
 	defaultJWTSecret        = "kxyz-dev-secret"
 	defaultJWTExpireMinutes = 1440
+	defaultAIBaseURL        = "https://api.openai.com/v1"
+	defaultAIModel          = "gpt-4o-mini"
+	defaultAITemperature    = 0.7
 )
 
 type Config struct {
@@ -21,6 +24,10 @@ type Config struct {
 	RedisDB       int
 	JWTSecret     string
 	JWTExpireMins int
+	AIBaseURL     string
+	AIModel       string
+	AIAPIKey      string
+	AITemperature float64
 }
 
 func Load() Config {
@@ -32,6 +39,10 @@ func Load() Config {
 		RedisDB:       getEnvInt("REDIS_DB", 0),
 		JWTSecret:     getEnv("JWT_SECRET", defaultJWTSecret),
 		JWTExpireMins: getEnvInt("JWT_EXPIRE_MINUTES", defaultJWTExpireMinutes),
+		AIBaseURL:     getEnv("AI_BASE_URL", defaultAIBaseURL),
+		AIModel:       getEnv("AI_MODEL", defaultAIModel),
+		AIAPIKey:      getEnv("AI_API_KEY", ""),
+		AITemperature: getEnvFloat("AI_TEMPERATURE", defaultAITemperature),
 	}
 }
 
@@ -48,6 +59,18 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getEnvFloat(key string, fallback float64) float64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return fallback
 	}

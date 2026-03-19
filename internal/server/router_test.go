@@ -21,7 +21,10 @@ func buildRouter(jwtMiddleware gin.HandlerFunc) *gin.Engine {
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
 		jwtMiddleware,
+		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
@@ -91,6 +94,13 @@ func TestMealsRoutes(t *testing.T) {
 	if statsResp.Code != http.StatusOK {
 		t.Fatalf("expected statistics charts status 200, got %d", statsResp.Code)
 	}
+
+	aiReq := httptest.NewRequest(http.MethodGet, "/api/v1/users/me/ai-advice", nil)
+	aiResp := httptest.NewRecorder()
+	router.ServeHTTP(aiResp, aiReq)
+	if aiResp.Code != http.StatusOK {
+		t.Fatalf("expected ai advice status 200, got %d", aiResp.Code)
+	}
 }
 
 func TestAuthRoutes(t *testing.T) {
@@ -158,10 +168,13 @@ func TestProtectedRoutesRequireJWT(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/api/v1/test_auth"},
 		{method: http.MethodPost, path: "/api/v1/devices/bind", body: `{}`},
+		{method: http.MethodGet, path: "/api/v1/devices"},
+		{method: http.MethodDelete, path: "/api/v1/devices/device-1"},
 		{method: http.MethodGet, path: "/api/v1/meals"},
 		{method: http.MethodGet, path: "/api/v1/meals/meal-1"},
 		{method: http.MethodGet, path: "/api/v1/meals/meal-1/trajectory"},
 		{method: http.MethodGet, path: "/api/v1/users/me/statistics/charts"},
+		{method: http.MethodGet, path: "/api/v1/users/me/ai-advice"},
 		{method: http.MethodPut, path: "/api/v1/meals/meal-1/foods", body: `{"grids":[]}`},
 		{method: http.MethodPost, path: "/api/v1/communities/create", body: `{"name":"MIT","description":"demo"}`},
 		{method: http.MethodPost, path: "/api/v1/communities/community-1/join"},

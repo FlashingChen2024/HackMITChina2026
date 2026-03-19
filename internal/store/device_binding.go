@@ -31,6 +31,17 @@ func (s *GormDeviceBindingStore) GetByDeviceID(ctx context.Context, deviceID str
 	return binding, nil
 }
 
+func (s *GormDeviceBindingStore) ListByUserID(ctx context.Context, userID string) ([]model.DeviceBinding, error) {
+	var bindings []model.DeviceBinding
+	if err := s.db.WithContext(ctx).
+		Model(&model.DeviceBinding{}).
+		Where("user_id = ?", userID).
+		Find(&bindings).Error; err != nil {
+		return nil, fmt.Errorf("list device bindings by user id: %w", err)
+	}
+	return bindings, nil
+}
+
 func (s *GormDeviceBindingStore) BindDevice(ctx context.Context, deviceID string, userID string) error {
 	now := time.Now().UTC()
 	binding := model.DeviceBinding{
@@ -48,6 +59,16 @@ func (s *GormDeviceBindingStore) BindDevice(ctx context.Context, deviceID string
 		return fmt.Errorf("bind device: %w", err)
 	}
 	return nil
+}
+
+func (s *GormDeviceBindingStore) UnbindDevice(ctx context.Context, deviceID string, userID string) (bool, error) {
+	result := s.db.WithContext(ctx).
+		Where("device_id = ? AND user_id = ?", deviceID, userID).
+		Delete(&model.DeviceBinding{})
+	if result.Error != nil {
+		return false, fmt.Errorf("unbind device: %w", result.Error)
+	}
+	return result.RowsAffected > 0, nil
 }
 
 func (s *GormDeviceBindingStore) IsDeviceBoundToOtherUser(
