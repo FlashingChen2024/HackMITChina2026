@@ -1,0 +1,69 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: kxyz-mysql
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-963487158835}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-kxyz}"
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: kxyz-redis
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: flashingchen/kxyz-backend:latest
+    container_name: kxyz-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      HTTP_PORT: "${HTTP_PORT:-8080}"
+      MYSQL_DSN: "${MYSQL_DSN:-root:963487158835@tcp(mysql:3306)/kxyz?charset=utf8mb4&parseTime=True&loc=Local}"
+      REDIS_ADDR: "${REDIS_ADDR:-redis:6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_DB: "${REDIS_DB:-0}"
+      JWT_SECRET: "${JWT_SECRET:-kxyz-dev-secret}"
+      JWT_EXPIRE_MINUTES: "${JWT_EXPIRE_MINUTES:-1440}"
+      AI_BASE_URL: "${AI_BASE_URL:-https://api.openai.com/v1}"
+      AI_MODEL: "${AI_MODEL:-gpt-4o-mini}"
+      AI_API_KEY: "${AI_API_KEY:-}"
+      AI_TEMPERATURE: "${AI_TEMPERATURE:-0.7}"
+    ports:
+      - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
+
+volumes:
+  mysql_data:
+  redis_data:
