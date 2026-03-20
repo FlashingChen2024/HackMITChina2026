@@ -1,3 +1,9 @@
 dist/
 .env
 .env.local
+AGENTS.md
+API.md
+DEPLOY.md
+OpenAPI.json
+PLAN.md
+PRD.md
