@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { Alert, Box, Button, Card, CardContent, Stack, TextField, Typography } from '@mui/material';
 import { getCurrentUser } from '../api/client';
 import { fetchChartData, CHART_TYPES } from '../api/charts';
 import ChartBlock from '../components/ChartBlock';
@@ -123,18 +124,35 @@ export default function Charts() {
   const [end_date, setEnd_date] = useState(() => new Date().toISOString().slice(0, 10));
 
   return (
-    <div>
-      <div className="card">
-        <h2>统计图表</h2>
-        <div className="form-row">
-          {currentUser && <span className="hint">当前用户：{currentUser.username}（ID: {currentUser.userId}）</span>}
-          <label>开始日期</label>
-          <input type="date" value={start_date} onChange={e => setStart_date(e.target.value)} />
-          <label>结束日期</label>
-          <input type="date" value={end_date} onChange={e => setEnd_date(e.target.value)} />
-        </div>
-      </div>
-
+    <Stack spacing={2}>
+      <Card>
+        <CardContent>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>统计图表</Typography>
+          {currentUser && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              当前用户：{currentUser.username}（ID: {currentUser.userId}）
+            </Alert>
+          )}
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              label="开始日期"
+              type="date"
+              size="small"
+              value={start_date}
+              onChange={e => setStart_date(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="结束日期"
+              type="date"
+              size="small"
+              value={end_date}
+              onChange={e => setEnd_date(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+        </CardContent>
+      </Card>
       {CHART_TYPES.map(ct => (
         <ChartSection
           key={ct}
@@ -143,7 +161,7 @@ export default function Charts() {
           end_date={end_date}
         />
       ))}
-    </div>
+    </Stack>
   );
 }
 
@@ -151,22 +169,24 @@ function ChartSection({ chartType, start_date, end_date }) {
   const [option, loading, error, isEmpty, load] = useChartOption(chartType, start_date, end_date);
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <h3 style={{ margin: 0 }}>{CHART_LABELS[chartType]}</h3>
-        <button type="button" className="btn" onClick={load} disabled={loading}>加载</button>
-      </div>
-      {error && <p className="error">{error}</p>}
+    <Card>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+          <Typography variant="h6">{CHART_LABELS[chartType]}</Typography>
+          <Button type="button" variant="contained" onClick={load} disabled={loading}>加载</Button>
+        </Box>
+      {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
       {!loading && !error && isEmpty && (
-        <p className="hint">
+        <Alert severity="warning" sx={{ mb: 1.5 }}>
           该日期范围内无数据返回。当前图表数据来自云端接口
-          <br />`GET /api/v1/users/me/statistics/charts`
+          <br />GET /api/v1/users/me/statistics/charts
           <br />请确保日期范围覆盖你的用餐数据，并点击各卡片「加载」。
-        </p>
+        </Alert>
       )}
-      <div className="chart-wrap">
+      <Box sx={{ width: '100%', height: 320 }}>
         <ChartBlock option={option} loading={loading} />
-      </div>
-    </div>
+      </Box>
+      </CardContent>
+    </Card>
   );
 }

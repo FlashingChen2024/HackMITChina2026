@@ -1,5 +1,18 @@
 import { useState } from 'react';
 import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemText,
+  Stack,
+  TextField,
+  Typography
+} from '@mui/material';
+import {
   createCommunity,
   joinCommunity,
   getCommunityDashboard
@@ -90,86 +103,85 @@ export default function Communities() {
   };
 
   return (
-    <div>
-      <div className="card">
-        <h2>社区功能</h2>
-        <p className="hint">创建社区会返回一个社区 ID，其他人需要输入该 ID 才能加入。</p>
-        <p className="hint">本页已按规范对齐 3 个接口：创建、加入、社区看板。</p>
-        {loading && <p className="loading">处理中...</p>}
-        {error && <p className="error">{error}</p>}
-        {success && <p className="hint">{success}</p>}
-      </div>
+    <Stack spacing={2}>
+      <Card>
+        <CardContent>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>社区功能</Typography>
+          <Typography variant="body2" color="text.secondary">
+            创建社区会返回一个社区 ID，其他人需要输入该 ID 才能加入。
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            本页已按规范对齐 3 个接口：创建、加入、社区看板。
+          </Typography>
+          {loading && <Alert severity="info" sx={{ mt: 2 }}>处理中...</Alert>}
+          {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+          {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
+        </CardContent>
+      </Card>
 
-      <div className="card">
-        <h3>创建社区</h3>
-        <form className="form-row" onSubmit={onCreate}>
-          <label>社区名称</label>
-          <input
-            type="text"
-            placeholder="请输入社区名称"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-          />
-          <label>社区简介</label>
-          <input
-            type="text"
-            placeholder="可选"
-            value={createDesc}
-            onChange={(e) => setCreateDesc(e.target.value)}
-          />
-          <button type="submit" className="btn" disabled={loading || !createName.trim()}>创建</button>
-        </form>
-        {lastCreatedId && <p className="hint">最近创建的社区 ID：<code>{lastCreatedId}</code></p>}
-      </div>
+      <Card>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 2 }}>创建社区</Typography>
+          <Box component="form" onSubmit={onCreate} sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField label="社区名称" value={createName} onChange={(e) => setCreateName(e.target.value)} />
+            <TextField label="社区简介" value={createDesc} onChange={(e) => setCreateDesc(e.target.value)} />
+            <Button type="submit" variant="contained" disabled={loading || !createName.trim()}>创建</Button>
+          </Box>
+          {lastCreatedId && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              最近创建的社区 ID：{lastCreatedId}
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
 
-      <div className="card">
-        <h3>加入社区</h3>
-        <form className="form-row" onSubmit={onJoin}>
-          <label>社区 ID</label>
-          <input
-            type="text"
-            placeholder="例如 C8F3A1B2"
-            value={joinId}
-            onChange={(e) => setJoinId(e.target.value)}
-          />
-          <button type="submit" className="btn" disabled={loading || !joinId.trim()}>加入</button>
-        </form>
-      </div>
+      <Card>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 2 }}>加入社区</Typography>
+          <Box component="form" onSubmit={onJoin} sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField label="社区 ID" placeholder="例如 C8F3A1B2" value={joinId} onChange={(e) => setJoinId(e.target.value)} />
+            <Button type="submit" variant="contained" disabled={loading || !joinId.trim()}>加入</Button>
+          </Box>
+        </CardContent>
+      </Card>
 
-      <div className="card">
-        <h3>社区大屏聚合看板</h3>
-        <form className="form-row" onSubmit={onLoadDashboard}>
-          <label>社区 ID</label>
-          <input
-            type="text"
-            placeholder="输入 community_id"
-            value={dashboardId}
-            onChange={(e) => setDashboardId(e.target.value)}
-          />
-          <button type="submit" className="btn" disabled={loading || !dashboardId.trim()}>查看看板</button>
-        </form>
+      <Card>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 2 }}>社区大屏聚合看板</Typography>
+          <Box component="form" onSubmit={onLoadDashboard} sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              label="社区 ID"
+              placeholder="输入 community_id"
+              value={dashboardId}
+              onChange={(e) => setDashboardId(e.target.value)}
+            />
+            <Button type="submit" variant="contained" disabled={loading || !dashboardId.trim()}>查看看板</Button>
+          </Box>
 
-        {!dashboard ? (
-          <p className="hint">输入社区 ID 并点击“查看看板”后显示聚合数据。</p>
-        ) : (
-          <div>
-            <p className="hint">
-              社区：{dashboard.community_name}（ID: {dashboard.community_id}） | 成员数：{dashboard.member_count}
-            </p>
-            <ul className="list">
-              {(dashboard.food_avg_stats || []).map((item, idx) => (
-                <li key={`${item.food_name || 'food'}-${idx}`} style={{ alignItems: 'flex-start', flexDirection: 'column', gap: 6 }}>
-                  <strong>{item.food_name}</strong>
-                  <span>
-                    打饭均值：{item.avg_served_g} g | 剩余均值：{item.avg_leftover_g} g | 摄入均值：{item.avg_intake_g} g | 平均速度：{item.avg_speed_g_per_min} g/min
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
+          {!dashboard ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              输入社区 ID 并点击“查看看板”后显示聚合数据。
+            </Typography>
+          ) : (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                社区：{dashboard.community_name}（ID: {dashboard.community_id}） | 成员数：{dashboard.member_count}
+              </Typography>
+              <List>
+                {(dashboard.food_avg_stats || []).map((item, idx) => (
+                  <ListItem key={`${item.food_name || 'food'}-${idx}`} divider>
+                    <ListItemText
+                      primary={item.food_name}
+                      secondary={`打饭均值：${item.avg_served_g} g | 剩余均值：${item.avg_leftover_g} g | 摄入均值：${item.avg_intake_g} g | 平均速度：${item.avg_speed_g_per_min} g/min`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+    </Stack>
   );
 }
 
