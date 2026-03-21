@@ -5,91 +5,83 @@ import { createTheme, CssBaseline, ThemeProvider } from '@mui/material';
 import App from './App';
 import './index.css';
 
+// 现代、大气、简洁的主题
 const theme = createTheme({
   palette: {
     mode: 'light',
-    primary: { main: '#000000', contrastText: '#ffffff' },
-    secondary: { main: '#f4f4f5', contrastText: '#000000' },
-    error: { main: '#ff3333' },
-    background: { default: '#ffffff', paper: '#ffffff' },
-    text: { primary: '#000000', secondary: '#52525b' }
+    primary: { 
+      main: '#00BFA5', // 现代的青绿色，契合健康饮食
+      light: '#33D8C2',
+      dark: '#008573',
+      contrastText: '#fff'
+    },
+    secondary: { 
+      main: '#4F46E5', // 靛蓝色，用于强调
+      light: '#818CF8',
+      dark: '#3730A3',
+      contrastText: '#fff'
+    },
+    background: { 
+      default: '#F8FAFC', // 极简灰白背景
+      paper: '#FFFFFF' 
+    },
+    text: {
+      primary: '#1E293B',
+      secondary: '#64748B'
+    },
+    divider: '#E2E8F0'
   },
-  shape: { borderRadius: 0 },
   typography: {
-    fontFamily: '"Inter", "Helvetica Neue", Helvetica, Arial, sans-serif',
-    h3: { fontWeight: 900, letterSpacing: '-0.04em', textTransform: 'uppercase' },
-    h4: { fontWeight: 900, letterSpacing: '-0.04em' },
-    h5: { fontWeight: 800, letterSpacing: '-0.02em' },
-    h6: { fontWeight: 800, letterSpacing: '-0.02em' },
-    subtitle1: { fontWeight: 800, letterSpacing: '-0.01em' },
-    button: { textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em' }
+    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    h4: { fontWeight: 800, letterSpacing: '-0.02em' },
+    h5: { fontWeight: 700, letterSpacing: '-0.01em' },
+    h6: { fontWeight: 600 },
+    subtitle1: { fontWeight: 600 },
+    button: { textTransform: 'none', fontWeight: 600 }
+  },
+  shape: { 
+    borderRadius: 16 // 更大圆角，现代感更强
   },
   components: {
     MuiButton: {
       styleOverrides: {
-        root: { 
-          borderRadius: 0, 
-          padding: '12px 24px', 
-          border: '2px solid #000',
-          boxShadow: '4px 4px 0px #000',
-          transition: 'all 0.1s ease',
-          '&:hover': { 
-            boxShadow: '2px 2px 0px #000',
-            transform: 'translate(2px, 2px)'
-          },
-          '&:disabled': {
-            border: '2px solid #a1a1aa',
-            boxShadow: 'none',
-            transform: 'none'
+        root: {
+          borderRadius: 12,
+          padding: '8px 24px',
+          boxShadow: 'none',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
           }
         },
-        containedPrimary: {
-          backgroundColor: '#000',
-          color: '#fff',
-          '&:hover': { backgroundColor: '#000' }
-        },
-        outlined: {
-          backgroundColor: '#fff',
-          color: '#000',
-          '&:hover': { backgroundColor: '#f4f4f5' }
+        contained: {
+          '&:hover': {
+            boxShadow: '0 4px 14px rgba(0, 191, 165, 0.4)'
+          }
         }
       }
     },
     MuiCard: {
       styleOverrides: {
-        root: { 
-          borderRadius: 0, 
-          border: '2px solid #000',
-          boxShadow: '4px 4px 0px #000'
+        root: {
+          borderRadius: 20,
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+          border: '1px solid rgba(226, 232, 240, 0.8)'
         }
-      }
-    },
-    MuiAppBar: {
-      styleOverrides: {
-        root: { backgroundColor: '#ffffff', borderBottom: '2px solid #000', color: '#000000', boxShadow: 'none' }
-      }
-    },
-    MuiBottomNavigation: {
-      styleOverrides: {
-        root: { height: 64, backgroundColor: '#ffffff', borderTop: '2px solid #000' }
-      }
-    },
-    MuiBottomNavigationAction: {
-      styleOverrides: {
-        root: { minWidth: 'auto', padding: '6px 0', '&.Mui-selected': { color: '#000000' }, color: '#a1a1aa' },
-        label: { fontSize: '0.75rem', fontWeight: 600, '&.Mui-selected': { fontSize: '0.75rem', fontWeight: 800 } }
       }
     },
     MuiTextField: {
       styleOverrides: {
         root: {
           '& .MuiOutlinedInput-root': {
-            borderRadius: 0,
-            backgroundColor: '#fff',
-            '& fieldset': { border: '2px solid #000' },
-            '&:hover fieldset': { border: '2px solid #000' },
-            '&.Mui-focused fieldset': { border: '2px solid #000' },
+            borderRadius: 12,
           }
+        }
+      }
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none'
         }
       }
     }
