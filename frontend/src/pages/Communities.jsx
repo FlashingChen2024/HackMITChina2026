@@ -1,24 +1,40 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardContent, TextField, Typography,
-  Tabs, Tab, Grid, Avatar, Chip, CircularProgress, Paper, Divider, useTheme
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CircularProgress,
+  Grid,
+  Paper,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+  useTheme,
 } from '@mui/material';
 import {
   AddCircleOutline as AddIcon,
-  GroupAdd as JoinIcon,
   Dashboard as DashboardIcon,
+  GroupAdd as JoinIcon,
   PeopleAlt as PeopleIcon,
-  ContentCopy as CopyIcon
 } from '@mui/icons-material';
-import { createCommunity, joinCommunity, getCommunityDashboard } from '../api/communities';
+import { createCommunity, getCommunityDashboard, joinCommunity } from '../api/communities';
 
-function TabPanel(props) {
-  const { children, value, index, ...other } = props;
+function TabPanel({ children, value, index }) {
   return (
-    <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ pt: 4 }}>{children}</Box>}
+    <div role="tabpanel" hidden={value !== index}>
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
     </div>
   );
+}
+
+function formatGrams(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  return `${n.toFixed(1)} g`;
 }
 
 export default function Communities() {
@@ -28,15 +44,12 @@ export default function Communities() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // 创建社区
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
   const [lastCreatedId, setLastCreatedId] = useState('');
 
-  // 加入社区
   const [joinId, setJoinId] = useState('');
 
-  // 看板
   const [dashboardId, setDashboardId] = useState('');
   const [dashboard, setDashboard] = useState(null);
 
@@ -45,23 +58,23 @@ export default function Communities() {
     setSuccess('');
   };
 
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-    clearMessages();
-  };
-
   const onCreate = async (e) => {
     e.preventDefault();
     if (!createName.trim()) return;
-    setLoading(true); clearMessages();
+
+    setLoading(true);
+    clearMessages();
     try {
-      const res = await createCommunity({ name: createName.trim(), description: createDesc.trim() });
+      const res = await createCommunity({
+        name: createName.trim(),
+        description: createDesc.trim(),
+      });
       setLastCreatedId(res.community_id || '');
-      setSuccess(`成功创建社区：${createName}`);
+      setSuccess(`成功创建社区：${createName.trim()}`);
       setCreateName('');
       setCreateDesc('');
     } catch (err) {
-      setError(err.message || '创建失败');
+      setError(err.message || '创建社区失败');
     } finally {
       setLoading(false);
     }
@@ -70,16 +83,18 @@ export default function Communities() {
   const onJoin = async (e) => {
     e.preventDefault();
     if (!joinId.trim()) return;
-    setLoading(true); clearMessages();
+
+    setLoading(true);
+    clearMessages();
     try {
-      await joinCommunity(joinId.trim().toUpperCase());
-      setSuccess('成功加入社区！');
-      setDashboardId(joinId.trim().toUpperCase());
+      const cid = joinId.trim().toUpperCase();
+      await joinCommunity(cid);
+      setSuccess('成功加入社区');
+      setDashboardId(cid);
       setJoinId('');
-      // 可选：加入成功后自动跳到看板
-      setTimeout(() => setActiveTab(2), 1500);
+      setTimeout(() => setActiveTab(2), 500);
     } catch (err) {
-      setError(err.message || '加入失败，请检查 ID 是否正确');
+      setError(err.message || '加入社区失败');
     } finally {
       setLoading(false);
     }
@@ -88,7 +103,9 @@ export default function Communities() {
   const onLoadDashboard = async (e) => {
     e.preventDefault();
     if (!dashboardId.trim()) return;
-    setLoading(true); clearMessages();
+
+    setLoading(true);
+    clearMessages();
     try {
       const res = await getCommunityDashboard(dashboardId.trim().toUpperCase());
       setDashboard(res || null);
@@ -102,24 +119,28 @@ export default function Communities() {
 
   return (
     <Box sx={{ pb: 4, maxWidth: 1000, mx: 'auto' }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>圈子社区</Typography>
-        <Typography variant="body1" sx={{ color: '#64748B' }}>加入健康营，和大家一起吃得更好</Typography>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>
+          圈子社区
+        </Typography>
+        <Typography variant="body1" sx={{ color: '#64748B' }}>
+          创建社区、加入社区并查看社区聚合看板
+        </Typography>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{success}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
-      <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'rgba(248, 250, 252, 0.5)' }}>
-          <Tabs 
-            value={activeTab} 
-            onChange={handleTabChange}
-            variant="fullWidth"
-            sx={{
-              '& .MuiTab-root': { py: 2.5, fontWeight: 600, fontSize: '1rem' },
-              '& .Mui-selected': { color: theme.palette.primary.main }
+      <Card>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs
+            value={activeTab}
+            onChange={(_, value) => {
+              setActiveTab(value);
+              clearMessages();
             }}
+            variant="fullWidth"
+            sx={{ '& .Mui-selected': { color: theme.palette.primary.main } }}
           >
             <Tab icon={<AddIcon />} iconPosition="start" label="创建社区" />
             <Tab icon={<JoinIcon />} iconPosition="start" label="加入社区" />
@@ -127,197 +148,110 @@ export default function Communities() {
           </Tabs>
         </Box>
 
-        <CardContent sx={{ p: { xs: 3, md: 5 } }}>
-          {/* 创建社区 */}
+        <CardContent>
           <TabPanel value={activeTab} index={0}>
-            <Box sx={{ maxWidth: 500, mx: 'auto' }}>
-              <Box sx={{ textAlign: 'center', mb: 4 }}>
-                <Avatar sx={{ width: 64, height: 64, mx: 'auto', mb: 2, bgcolor: 'rgba(16, 185, 129, 0.1)', color: '#10B981' }}>
-                  <AddIcon fontSize="large" />
-                </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>发起新的健康圈子</Typography>
-                <Typography variant="body2" sx={{ color: '#64748B' }}>创建后将生成专属 ID，邀请好友加入</Typography>
-              </Box>
-
-              <Box component="form" onSubmit={onCreate} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <TextField 
-                  label="社区名称" 
-                  value={createName} 
-                  onChange={(e) => setCreateName(e.target.value)} 
-                  fullWidth
-                  required
-                />
-                <TextField 
-                  label="社区简介" 
-                  value={createDesc} 
-                  onChange={(e) => setCreateDesc(e.target.value)} 
-                  fullWidth
-                  multiline
-                  rows={3}
-                />
-                <Button 
-                  type="submit" 
-                  variant="contained" 
-                  disabled={loading || !createName.trim()}
-                  sx={{ height: 56, fontSize: '1.05rem' }}
-                >
-                  {loading ? <CircularProgress size={24} color="inherit" /> : '立即创建'}
-                </Button>
-              </Box>
-
-              {lastCreatedId && (
-                <Paper sx={{ mt: 4, p: 3, bgcolor: '#F8FAFC', border: '1px dashed #CBD5E1', textAlign: 'center', borderRadius: 3 }}>
-                  <Typography variant="subtitle2" sx={{ color: '#64748B', mb: 1 }}>社区创建成功！您的专属 ID：</Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                    <Typography variant="h5" sx={{ fontWeight: 800, color: '#1E293B', fontFamily: 'monospace', letterSpacing: 2 }}>
-                      {lastCreatedId}
-                    </Typography>
-                    <Button 
-                      size="small" 
-                      onClick={() => navigator.clipboard.writeText(lastCreatedId)}
-                      sx={{ minWidth: 0, p: 1 }}
-                    >
-                      <CopyIcon fontSize="small" />
-                    </Button>
-                  </Box>
-                </Paper>
-              )}
-            </Box>
-          </TabPanel>
-
-          {/* 加入社区 */}
-          <TabPanel value={activeTab} index={1}>
-            <Box sx={{ maxWidth: 500, mx: 'auto' }}>
-              <Box sx={{ textAlign: 'center', mb: 4 }}>
-                <Avatar sx={{ width: 64, height: 64, mx: 'auto', mb: 2, bgcolor: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' }}>
-                  <JoinIcon fontSize="large" />
-                </Avatar>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>加入已有圈子</Typography>
-                <Typography variant="body2" sx={{ color: '#64748B' }}>输入好友分享的社区 ID</Typography>
-              </Box>
-
-              <Box component="form" onSubmit={onJoin} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <TextField 
-                  label="社区 ID" 
-                  placeholder="例如：C8F3A1B2" 
-                  value={joinId} 
-                  onChange={(e) => setJoinId(e.target.value)} 
-                  fullWidth
-                  required
-                  InputProps={{ sx: { fontFamily: 'monospace', letterSpacing: 1 } }}
-                />
-                <Button 
-                  type="submit" 
-                  variant="contained" 
-                  disabled={loading || !joinId.trim()}
-                  sx={{ height: 56, fontSize: '1.05rem', background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}
-                >
-                  {loading ? <CircularProgress size={24} color="inherit" /> : '申请加入'}
-                </Button>
-              </Box>
-            </Box>
-          </TabPanel>
-
-          {/* 社区看板 */}
-          <TabPanel value={activeTab} index={2}>
-            <Box component="form" onSubmit={onLoadDashboard} sx={{ display: 'flex', gap: 2, mb: 4, maxWidth: 600, mx: 'auto' }}>
+            <Box component="form" onSubmit={onCreate} sx={{ maxWidth: 560, display: 'grid', gap: 2 }}>
               <TextField
-                label="输入社区 ID 查看"
-                placeholder="例如：C8F3A1B2"
-                value={dashboardId}
-                onChange={(e) => setDashboardId(e.target.value)}
-                fullWidth
-                size="small"
-                sx={{ '& .MuiOutlinedInput-root': { height: 48 } }}
+                label="社区名称"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                required
               />
-              <Button 
-                type="submit" 
-                variant="contained" 
-                disabled={loading || !dashboardId.trim()}
-                sx={{ minWidth: 120, height: 48, background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' }}
-              >
-                {loading ? <CircularProgress size={24} color="inherit" /> : '查看看板'}
+              <TextField
+                label="社区简介"
+                value={createDesc}
+                onChange={(e) => setCreateDesc(e.target.value)}
+                multiline
+                minRows={3}
+              />
+              <Button type="submit" variant="contained" disabled={loading || !createName.trim()}>
+                {loading ? <CircularProgress size={20} color="inherit" /> : '创建社区'}
               </Button>
             </Box>
 
-            {!dashboard && !loading && (
-              <Box sx={{ textAlign: 'center', py: 6 }}>
-                <Avatar sx={{ width: 80, height: 80, mx: 'auto', mb: 2, bgcolor: '#F1F5F9', color: '#94A3B8' }}>
-                  <DashboardIcon sx={{ fontSize: 40 }} />
-                </Avatar>
-                <Typography sx={{ color: '#64748B' }}>加载社区大屏，查看成员健康饮食排行与统计</Typography>
-              </Box>
+            {lastCreatedId && (
+              <Paper sx={{ mt: 3, p: 2, bgcolor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
+                <Typography variant="body2" sx={{ color: '#64748B' }}>新社区 ID</Typography>
+                <Typography sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{lastCreatedId}</Typography>
+              </Paper>
             )}
+          </TabPanel>
+
+          <TabPanel value={activeTab} index={1}>
+            <Box component="form" onSubmit={onJoin} sx={{ maxWidth: 560, display: 'grid', gap: 2 }}>
+              <TextField
+                label="社区 ID"
+                value={joinId}
+                onChange={(e) => setJoinId(e.target.value)}
+                placeholder="例如：COMM_12345"
+                required
+              />
+              <Button type="submit" variant="contained" disabled={loading || !joinId.trim()}>
+                {loading ? <CircularProgress size={20} color="inherit" /> : '加入社区'}
+              </Button>
+            </Box>
+          </TabPanel>
+
+          <TabPanel value={activeTab} index={2}>
+            <Box component="form" onSubmit={onLoadDashboard} sx={{ maxWidth: 680, display: 'flex', gap: 2, mb: 3 }}>
+              <TextField
+                label="社区 ID"
+                value={dashboardId}
+                onChange={(e) => setDashboardId(e.target.value)}
+                fullWidth
+              />
+              <Button type="submit" variant="contained" disabled={loading || !dashboardId.trim()}>
+                {loading ? <CircularProgress size={20} color="inherit" /> : '加载看板'}
+              </Button>
+            </Box>
 
             {dashboard && (
-              <Box sx={{ animation: 'fadeIn 0.5s ease-in-out' }}>
-                <Paper sx={{ 
-                  p: 3, mb: 4, 
-                  background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
-                  color: 'white', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2
-                }}>
-                  <Box>
-                    <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>{dashboard.community_name}</Typography>
-                    <Typography variant="body2" sx={{ color: '#94A3B8', fontFamily: 'monospace' }}>ID: {dashboard.community_id}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'rgba(255,255,255,0.1)', px: 2, py: 1, borderRadius: 2 }}>
-                    <PeopleIcon />
-                    <Typography sx={{ fontWeight: 700, fontSize: '1.2rem' }}>{dashboard.member_count} <span style={{ fontSize: '0.9rem', fontWeight: 400, opacity: 0.8 }}>名成员</span></Typography>
+              <Box>
+                <Paper sx={{ p: 3, mb: 3, bgcolor: '#0F172A', color: '#fff' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>{dashboard.community_name}</Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8 }}>ID: {dashboard.community_id}</Typography>
+                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                    <PeopleIcon fontSize="small" />
+                    <Typography variant="body2">成员数：{dashboard.member_count}</Typography>
                   </Box>
                 </Paper>
 
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#1E293B', display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <span style={{ width: 4, height: 20, backgroundColor: '#00BFA5', borderRadius: 2 }}></span>
-                  菜品均值统计
-                </Typography>
-
                 <Grid container spacing={2}>
-                  {(dashboard.food_avg_stats || []).map((item, idx) => (
-                    <Grid item xs={12} md={6} key={`${item.food_name || 'food'}-${idx}`}>
-                      <Card sx={{ bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', boxShadow: 'none' }}>
-                        <CardContent>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#0F172A', mb: 2 }}>
-                            {item.food_name}
-                          </Typography>
-                          <Grid container spacing={2}>
-                            <Grid item xs={6}>
-                              <Typography variant="caption" sx={{ color: '#64748B' }}>打饭均值</Typography>
-                              <Typography sx={{ fontWeight: 700, color: '#3B82F6' }}>{item.avg_served_g} g</Typography>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Typography variant="caption" sx={{ color: '#64748B' }}>摄入均值</Typography>
-                              <Typography sx={{ fontWeight: 700, color: '#10B981' }}>{item.avg_intake_g} g</Typography>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Typography variant="caption" sx={{ color: '#64748B' }}>剩余均值</Typography>
-                              <Typography sx={{ fontWeight: 700, color: '#F59E0B' }}>{item.avg_leftover_g} g</Typography>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Typography variant="caption" sx={{ color: '#64748B' }}>平均速度</Typography>
-                              <Typography sx={{ fontWeight: 700, color: '#8B5CF6' }}>{item.avg_speed_g_per_min} g/min</Typography>
-                            </Grid>
-                          </Grid>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
-                  {(!dashboard.food_avg_stats || dashboard.food_avg_stats.length === 0) && (
-                    <Grid item xs={12}>
-                      <Alert severity="info" sx={{ borderRadius: 2 }}>该社区暂无足够的菜品统计数据</Alert>
-                    </Grid>
-                  )}
+                  {(dashboard.food_avg_stats || []).map((item, idx) => {
+                    const leftover = item.avg_leftover_g ?? Math.max(Number(item.avg_served_g || 0) - Number(item.avg_intake_g || 0), 0);
+                    return (
+                      <Grid item xs={12} md={6} key={`${item.food_name || 'food'}-${idx}`}>
+                        <Card sx={{ bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', boxShadow: 'none' }}>
+                          <CardContent>
+                            <Typography sx={{ fontWeight: 700, mb: 1 }}>{item.food_name || '未知菜品'}</Typography>
+                            <Typography variant="body2">打饭均值：{formatGrams(item.avg_served_g)}</Typography>
+                            <Typography variant="body2">摄入均值：{formatGrams(item.avg_intake_g)}</Typography>
+                            <Typography variant="body2">剩余均值：{formatGrams(leftover)}</Typography>
+                            <Typography variant="body2">平均速度：{Number(item.avg_speed_g_per_min || 0).toFixed(1)} g/min</Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    );
+                  })}
                 </Grid>
+
+                {(!dashboard.food_avg_stats || dashboard.food_avg_stats.length === 0) && (
+                  <Alert severity="info" sx={{ mt: 2 }}>该社区暂无菜品统计数据</Alert>
+                )}
+              </Box>
+            )}
+
+            {!dashboard && !loading && (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Avatar sx={{ mx: 'auto', mb: 1, bgcolor: '#F1F5F9', color: '#94A3B8' }}>
+                  <DashboardIcon />
+                </Avatar>
+                <Typography sx={{ color: '#64748B' }}>输入社区 ID 后可查看社区聚合看板</Typography>
               </Box>
             )}
           </TabPanel>
         </CardContent>
       </Card>
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </Box>
   );
 }
