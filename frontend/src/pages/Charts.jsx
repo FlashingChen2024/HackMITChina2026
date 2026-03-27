@@ -143,6 +143,29 @@ export default function Charts() {
     return d.toISOString().slice(0, 10);
   });
   const [end_date, setEnd_date] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateError, setDateError] = useState('');
+
+  // 验证日期范围
+  const validateDates = (start, end) => {
+    if (start && end && new Date(start) > new Date(end)) {
+      setDateError('结束日期不能早于开始日期');
+      return false;
+    }
+    setDateError('');
+    return true;
+  };
+
+  const handleStartDateChange = (e) => {
+    const newStart = e.target.value;
+    setStart_date(newStart);
+    validateDates(newStart, end_date);
+  };
+
+  const handleEndDateChange = (e) => {
+    const newEnd = e.target.value;
+    setEnd_date(newEnd);
+    validateDates(start_date, newEnd);
+  };
 
   return (
     <Box sx={{ pb: 4 }}>
@@ -162,26 +185,38 @@ export default function Charts() {
       </Box>
 
       <Card sx={{ mb: 4, bgcolor: '#fff' }}>
-        <CardContent sx={{ p: 3, display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#64748B' }}>
-            <DateIcon />
-            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>选择时间范围</Typography>
+        <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'flex-start' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#64748B', mt: 1 }}>
+              <DateIcon />
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>选择时间范围</Typography>
+            </Box>
+            <TextField
+              type="date"
+              size="small"
+              label="开始日期"
+              value={start_date}
+              onChange={handleStartDateChange}
+              error={!!dateError}
+              sx={{ width: { xs: '100%', sm: 180 } }}
+              InputLabelProps={{ shrink: true }}
+            />
+            <Typography sx={{ color: '#94A3B8', mt: 1, display: { xs: 'none', sm: 'block' } }}>至</Typography>
+            <TextField
+              type="date"
+              size="small"
+              label="结束日期"
+              value={end_date}
+              onChange={handleEndDateChange}
+              error={!!dateError}
+              helperText={dateError}
+              sx={{ width: { xs: '100%', sm: 180 } }}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{
+                min: start_date
+              }}
+            />
           </Box>
-          <TextField
-            type="date"
-            size="small"
-            value={start_date}
-            onChange={e => setStart_date(e.target.value)}
-            sx={{ width: { xs: '100%', sm: 180 } }}
-          />
-          <Typography sx={{ color: '#94A3B8', display: { xs: 'none', sm: 'block' } }}>至</Typography>
-          <TextField
-            type="date"
-            size="small"
-            value={end_date}
-            onChange={e => setEnd_date(e.target.value)}
-            sx={{ width: { xs: '100%', sm: 180 } }}
-          />
         </CardContent>
       </Card>
 
