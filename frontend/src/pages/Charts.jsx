@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Alert, Box, Button, Card, CardContent, Grid, TextField, Typography, useTheme, Chip, IconButton, Tooltip } from '@mui/material';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { Alert, Box, Card, CardContent, Grid, TextField, Typography, Chip, IconButton, Tooltip } from '@mui/material';
 import { Refresh as RefreshIcon, DateRange as DateIcon } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
 import { fetchChartData, CHART_TYPES } from '../api/charts';
@@ -13,33 +13,103 @@ const CHART_LABELS = {
   nutrition_pie: '营养摄入（卡路里占比）'
 };
 
+// 将数据按周聚合
+function aggregateByWeek(dates, values) {
+  const weekMap = new Map();
+  
+  dates.forEach((date, index) => {
+    const d = new Date(date);
+    // 获取该日期所在周的周一
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    const weekKey = monday.toISOString().slice(0, 10);
+    const weekLabel = `${monday.getMonth() + 1}/${monday.getDate()}`;
+    
+    if (!weekMap.has(weekKey)) {
+      weekMap.set(weekKey, { label: weekLabel, values: [], total: 0 });
+    }
+    const week = weekMap.get(weekKey);
+    week.values.push(Number(values[index]) || 0);
+    week.total += Number(values[index]) || 0;
+  });
+  
+  // 转换为数组并排序
+  const sorted = Array.from(weekMap.entries())
+    .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+  
+  return {
+    labels: sorted.map(([_, data]) => data.label),
+    // 周对比显示平均摄入量
+    values: sorted.map(([_, data]) => 
+      data.values.length > 0 ? Number((data.total / data.values.length).toFixed(1)) : 0
+    ),
+    totals: sorted.map(([_, data]) => Number(data.total.toFixed(1)))
+  };
+}
+
+// 限制饼图数据点数量，防止浏览器卡死
+function limitPieData(dates, calories, maxItems = 7) {
+  const data = dates.map((date, i) => ({
+    name: date,
+    value: Number(calories[i]) || 0,
+    originalIndex: i
+  })).filter(item => item.value > 0);
+  
+  // 按值从大到小排序
+  data.sort((a, b) => b.value - a.value);
+  
+  if (data.length <= maxItems) {
+    return data;
+  }
+  
+  // 取前 maxItems-1 个，其余合并为"其他"
+  const topItems = data.slice(0, maxItems - 1);
+  const otherItems = data.slice(maxItems - 1);
+  const otherValue = otherItems.reduce((sum, item) => sum + item.value, 0);
+  
+  return [
+    ...topItems,
+    { name: '其他', value: Number(otherValue.toFixed(1)), isOther: true }
+  ];
+}
+
 function useChartOption(chartType, start_date, end_date) {
   const [option, setOption] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isEmpty, setIsEmpty] = useState(false);
+  const [rawData, setRawData] = useState(null);
 
   const load = useCallback(async () => {
     if (!start_date || !end_date) return;
+    if (new Date(start_date) > new Date(end_date)) return;
+    
     setLoading(true);
     setError(null);
     setIsEmpty(false);
     try {
       const res = await fetchChartData({ start_date, end_date });
-      const root = res.data || res || {};
+      // 严格按照 API 文档解析响应
+      const root = res || {};
       const d = root.chart_data || {};
+      
+      // API 返回的数据结构
       const dates = d.dates || [];
       const served = d.daily_served_g || [];
       const intake = d.daily_intake_g || [];
       const calories = d.daily_calories || [];
       const speeds = d.avg_speed_g_per_min || [];
+      
+      setRawData({ dates, served, intake, calories, speeds });
 
-      const hasData =
-        dates.length > 0 &&
-        (served.some(v => v != null) ||
-         intake.some(v => v != null) ||
-         calories.some(v => v != null) ||
-         speeds.some(v => v != null));
+      const hasData = dates.length > 0 && (
+        served.some(v => v != null && v > 0) ||
+        intake.some(v => v != null && v > 0) ||
+        calories.some(v => v != null && v > 0) ||
+        speeds.some(v => v != null && v > 0)
+      );
+      
       setIsEmpty(!hasData);
 
       const baseOption = {
@@ -56,67 +126,182 @@ function useChartOption(chartType, start_date, end_date) {
 
       if (!hasData) {
         setOption({});
-      } else if (chartType === 'daily_trend') {
-        setOption({
-          ...baseOption,
-          color: ['#00BFA5', '#4F46E5'],
-          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
-          yAxis: { type: 'value', name: 'g', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } }, nameTextStyle: { color: '#64748B' } },
-          series: [
-            { name: '打饭量', type: 'line', data: served, smooth: true, areaStyle: { opacity: 0.1 } },
-            { name: '摄入量', type: 'line', data: intake, smooth: true, areaStyle: { opacity: 0.1 } }
-          ]
-        });
-      } else if (chartType === 'weekly_comparison') {
-        setOption({
-          ...baseOption,
-          color: ['#3B82F6'],
-          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
-          yAxis: { type: 'value', name: 'g', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
-          series: [{ name: '摄入量', type: 'bar', data: intake, itemStyle: { borderRadius: [4, 4, 0, 0] } }]
-        });
-      } else if (chartType === 'waste_analysis') {
-        const waste = served.map((s, i) => {
-          const v = Number(s) - Number(intake[i] || 0);
-          return v > 0 ? v : 0;
-        });
-        setOption({
-          ...baseOption,
-          color: ['#EF4444'],
-          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
-          yAxis: { type: 'value', name: 'g', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
-          series: [{ name: '浪费量', type: 'line', data: waste, smooth: true, areaStyle: { opacity: 0.1 } }]
-        });
-      } else if (chartType === 'speed_analysis') {
-        setOption({
-          ...baseOption,
-          color: ['#F59E0B'],
-          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
-          yAxis: { type: 'value', name: 'g/min', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
-          series: [{ name: '平均速度', type: 'line', data: speeds, smooth: true }]
-        });
-      } else if (chartType === 'nutrition_pie') {
-        const pieData = dates.map((dLabel, i) => ({
-          name: dLabel,
-          value: Number(calories[i] || 0)
-        }));
-        setOption({
-          tooltip: { trigger: 'item', backgroundColor: 'rgba(255, 255, 255, 0.9)', borderColor: '#E2E8F0', borderRadius: 8 },
-          legend: { bottom: 0, textStyle: { color: '#64748B' } },
-          color: ['#00BFA5', '#4F46E5', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'],
-          series: [{ 
-            type: 'pie', 
-            radius: ['40%', '70%'], 
-            avoidLabelOverlap: false,
-            itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
-            label: { show: false, position: 'center' },
-            emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
-            labelLine: { show: false },
-            data: pieData 
-          }]
-        });
-      } else {
-        setOption({});
+        setLoading(false);
+        return;
+      }
+
+      switch (chartType) {
+        case 'daily_trend': {
+          setOption({
+            ...baseOption,
+            color: ['#00BFA5', '#4F46E5'],
+            xAxis: { 
+              type: 'category', 
+              data: dates, 
+              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
+              axisLabel: { color: '#64748B' } 
+            },
+            yAxis: { 
+              type: 'value', 
+              name: 'g', 
+              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } }, 
+              nameTextStyle: { color: '#64748B' } 
+            },
+            series: [
+              { name: '打饭量', type: 'line', data: served, smooth: true, areaStyle: { opacity: 0.1 } },
+              { name: '摄入量', type: 'line', data: intake, smooth: true, areaStyle: { opacity: 0.1 } }
+            ]
+          });
+          break;
+        }
+        
+        case 'weekly_comparison': {
+          // 按周聚合数据
+          const weeklyData = aggregateByWeek(dates, intake);
+          
+          setOption({
+            ...baseOption,
+            color: ['#3B82F6'],
+            xAxis: { 
+              type: 'category', 
+              data: weeklyData.labels, 
+              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
+              axisLabel: { color: '#64748B' },
+              name: '周(开始日期)',
+              nameLocation: 'end',
+              nameTextStyle: { color: '#94A3B8', fontSize: 12 }
+            },
+            yAxis: { 
+              type: 'value', 
+              name: '平均摄入量(g)', 
+              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } },
+              nameTextStyle: { color: '#64748B' }
+            },
+            series: [{ 
+              name: '平均摄入量', 
+              type: 'bar', 
+              data: weeklyData.values, 
+              itemStyle: { borderRadius: [4, 4, 0, 0] },
+              barWidth: '50%'
+            }],
+            tooltip: {
+              ...baseOption.tooltip,
+              formatter: function(params) {
+                const idx = params[0].dataIndex;
+                return `
+                  <div style="font-weight:600">${params[0].name}</div>
+                  <div>平均摄入量: ${weeklyData.values[idx]} g</div>
+                  <div>周总摄入量: ${weeklyData.totals[idx]} g</div>
+                `;
+              }
+            }
+          });
+          break;
+        }
+        
+        case 'waste_analysis': {
+          // 计算浪费量 = 打饭量 - 摄入量
+          const waste = served.map((s, i) => {
+            const v = Number(s) - Number(intake[i] || 0);
+            return v > 0 ? Number(v.toFixed(1)) : 0;
+          });
+          
+          setOption({
+            ...baseOption,
+            color: ['#EF4444'],
+            xAxis: { 
+              type: 'category', 
+              data: dates, 
+              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
+              axisLabel: { color: '#64748B' } 
+            },
+            yAxis: { 
+              type: 'value', 
+              name: 'g', 
+              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } 
+            },
+            series: [{ 
+              name: '浪费量', 
+              type: 'line', 
+              data: waste, 
+              smooth: true, 
+              areaStyle: { opacity: 0.1 } 
+            }]
+          });
+          break;
+        }
+        
+        case 'speed_analysis': {
+          setOption({
+            ...baseOption,
+            color: ['#F59E0B'],
+            xAxis: { 
+              type: 'category', 
+              data: dates, 
+              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
+              axisLabel: { color: '#64748B' } 
+            },
+            yAxis: { 
+              type: 'value', 
+              name: 'g/min', 
+              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } 
+            },
+            series: [{ 
+              name: '平均速度', 
+              type: 'line', 
+              data: speeds, 
+              smooth: true 
+            }]
+          });
+          break;
+        }
+        
+        case 'nutrition_pie': {
+          // 限制饼图数据点数量，防止浏览器卡死
+          const pieData = limitPieData(dates, calories, 7);
+          
+          setOption({
+            tooltip: { 
+              trigger: 'item', 
+              backgroundColor: 'rgba(255, 255, 255, 0.9)', 
+              borderColor: '#E2E8F0', 
+              borderRadius: 8,
+              formatter: function(params) {
+                return `
+                  <div style="font-weight:600">${params.name}</div>
+                  <div>卡路里: ${params.value} kcal</div>
+                  <div>占比: ${params.percent}%</div>
+                `;
+              }
+            },
+            legend: { 
+              bottom: 0, 
+              textStyle: { color: '#64748B' },
+              type: 'scroll'
+            },
+            color: ['#00BFA5', '#4F46E5', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'],
+            series: [{ 
+              type: 'pie', 
+              radius: ['40%', '70%'], 
+              avoidLabelOverlap: true,
+              itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+              label: { 
+                show: true, 
+                formatter: '{b}: {c}kcal',
+                fontSize: 11
+              },
+              emphasis: { 
+                label: { show: true, fontSize: 14, fontWeight: 'bold' } 
+              },
+              labelLine: { show: true },
+              data: pieData 
+            }]
+          });
+          break;
+        }
+        
+        default:
+          setOption({});
       }
     } catch (e) {
       setError(e.message);
@@ -136,7 +321,6 @@ function useChartOption(chartType, start_date, end_date) {
 
 export default function Charts() {
   const currentUser = getCurrentUser();
-  const theme = useTheme();
   const [start_date, setStart_date] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
