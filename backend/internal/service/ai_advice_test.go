@@ -15,9 +15,11 @@ import (
 type fakeAIAdviceStore struct {
 	meal       model.Meal
 	grids      []model.MealGrid
+	profile    model.UserProfile
 	todayTotal float64
 	statsRows  []model.DailyStatisticsRow
 	latestErr  error
+	profileErr error
 	todayErr   error
 	statsErr   error
 	lastUserID string
@@ -67,6 +69,20 @@ func (f *fakeAIAdviceStore) SumTodayCalories(
 	return f.todayTotal, nil
 }
 
+func (f *fakeAIAdviceStore) GetUserProfileByUserID(
+	_ context.Context,
+	userID string,
+) (model.UserProfile, error) {
+	f.lastUserID = userID
+	if f.profileErr != nil {
+		return model.UserProfile{}, f.profileErr
+	}
+	if strings.TrimSpace(f.profile.UserID) == "" {
+		return model.UserProfile{}, gorm.ErrRecordNotFound
+	}
+	return f.profile, nil
+}
+
 func (f *fakeAIAdviceStore) AggregateDailyStatistics(
 	_ context.Context,
 	userID string,
@@ -109,6 +125,9 @@ func TestAIAdviceBuildPromptMealReview(t *testing.T) {
 	if !strings.Contains(prompt, "任务类型:meal_review") {
 		t.Fatalf("expected meal_review type in prompt, got %s", prompt)
 	}
+	if !strings.Contains(prompt, "BasicPrompt") {
+		t.Fatalf("expected basic prompt context when no profile, got %s", prompt)
+	}
 	if !strings.Contains(prompt, "营养评估模型参考《中国居民膳食营养素参考摄入量（DRIs）》") {
 		t.Fatalf("expected DRI instruction in prompt, got %s", prompt)
 	}
@@ -128,6 +147,36 @@ func TestAIAdviceBuildPromptMealReview(t *testing.T) {
 	if store.statsStart.Format("2006-01-02") != "2026-03-16" ||
 		store.statsEnd.Format("2006-01-02") != "2026-03-18" {
 		t.Fatalf("unexpected stats window: %s - %s", store.statsStart, store.statsEnd)
+	}
+}
+
+func TestAIAdviceBuildPromptWithUserProfileUsesAdvancedPrompt(t *testing.T) {
+	store := &fakeAIAdviceStore{
+		meal: model.Meal{MealID: "meal-1", DurationMinutes: 25},
+		grids: []model.MealGrid{
+			{GridIndex: 1, FoodName: "沙拉", IntakeG: 150, TotalCal: 180},
+		},
+		profile: model.UserProfile{
+			UserID:   "user-1",
+			HeightCM: 165,
+			WeightKG: 45.0,
+			Gender:   "女",
+			Age:      18,
+		},
+		todayTotal: 300,
+	}
+	svc := NewAIAdviceService(store)
+
+	prompt, err := svc.BuildPrompt(context.Background(), "user-1", AdviceTypeMealReview)
+	if err != nil {
+		t.Fatalf("build prompt failed: %v", err)
+	}
+
+	if !strings.Contains(prompt, "AdvancedPrompt") {
+		t.Fatalf("expected advanced prompt context, got %s", prompt)
+	}
+	if !strings.Contains(prompt, "身高165cm、体重45.0kg、性别女、年龄18岁") {
+		t.Fatalf("expected profile fields in prompt, got %s", prompt)
 	}
 }
 
@@ -275,5 +324,68 @@ func TestAIAdviceGenerateAdviceFallbackWhenGeneratorErrors(t *testing.T) {
 	}
 	if !result.IsAlert {
 		t.Fatalf("expected fallback daily alert to set is_alert true")
+	}
+}
+
+func TestAIAdviceGenerateAdviceFallbackPersonalizedForDemoA(t *testing.T) {
+	store := &fakeAIAdviceStore{
+		meal: model.Meal{MealID: "meal-a", DurationMinutes: 18},
+		grids: []model.MealGrid{
+			{GridIndex: 1, FoodName: "沙拉", IntakeG: 120, TotalCal: 120},
+			{GridIndex: 2, FoodName: "鸡胸肉", IntakeG: 100, TotalCal: 165},
+			{GridIndex: 3, FoodName: "西兰花", IntakeG: 70, TotalCal: 25},
+		},
+		profile: model.UserProfile{
+			UserID:   "user-a",
+			HeightCM: 165,
+			WeightKG: 45,
+			Gender:   "female",
+			Age:      18,
+		},
+		todayTotal: 310,
+	}
+	svc := NewAIAdviceService(store)
+
+	result, err := svc.GenerateAdvice(context.Background(), "user-a", AdviceTypeMealReview)
+	if err != nil {
+		t.Fatalf("generate advice failed: %v", err)
+	}
+	if !strings.Contains(result.Advice, "增肌") {
+		t.Fatalf("expected demo A fallback to mention 增肌, got %s", result.Advice)
+	}
+	if result.IsAlert {
+		t.Fatalf("expected demo A fallback is_alert false")
+	}
+}
+
+func TestAIAdviceGenerateAdviceFallbackPersonalizedForDemoB(t *testing.T) {
+	store := &fakeAIAdviceStore{
+		meal: model.Meal{MealID: "meal-b", DurationMinutes: 25},
+		grids: []model.MealGrid{
+			{GridIndex: 1, FoodName: "炸鸡", IntakeG: 180, TotalCal: 450},
+			{GridIndex: 2, FoodName: "薯条", IntakeG: 140, TotalCal: 350},
+			{GridIndex: 3, FoodName: "可乐", IntakeG: 300, TotalCal: 120},
+			{GridIndex: 4, FoodName: "蘸酱", IntakeG: 60, TotalCal: 80},
+		},
+		profile: model.UserProfile{
+			UserID:   "user-b",
+			HeightCM: 170,
+			WeightKG: 90,
+			Gender:   "male",
+			Age:      45,
+		},
+		todayTotal: 1000,
+	}
+	svc := NewAIAdviceService(store)
+
+	result, err := svc.GenerateAdvice(context.Background(), "user-b", AdviceTypeMealReview)
+	if err != nil {
+		t.Fatalf("generate advice failed: %v", err)
+	}
+	if !strings.Contains(result.Advice, "高油高热量") {
+		t.Fatalf("expected demo B fallback to mention high risk calories, got %s", result.Advice)
+	}
+	if !result.IsAlert {
+		t.Fatalf("expected demo B fallback is_alert true")
 	}
 }

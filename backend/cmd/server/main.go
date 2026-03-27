@@ -32,7 +32,7 @@ func main() {
 	if err := store.AutoMigrate(mysqlDB); err != nil {
 		log.Fatalf("auto migrate failed: %v", err)
 	}
-	log.Printf("auto migrate completed for meals, meal_curve_data, users and device_bindings")
+	log.Printf("auto migrate completed for meals, meal_curve_data, users, user_profiles and device_bindings")
 
 	redisClient, err := store.NewRedis(ctx, store.RedisConfig{
 		Addr:     cfg.RedisAddr,
@@ -72,6 +72,9 @@ func main() {
 	}
 	aiAdviceService := service.NewAIAdviceService(aiAdviceStore, aiGenerator)
 	aiAdviceHandler := api.NewAIAdviceHandler(aiAdviceService, log.Default())
+	userProfileStore := store.NewGormUserProfileStore(mysqlDB)
+	userProfileService := service.NewUserProfileService(userProfileStore)
+	userProfileHandler := api.NewUserProfileHandler(userProfileService)
 	communityStore := store.NewGormCommunityStore(mysqlDB)
 	communityService := service.NewCommunityService(communityStore)
 	communityHandler := api.NewCommunityHandler(communityService)
@@ -96,6 +99,8 @@ func main() {
 		mealsHandler.Trajectory,
 		mealsHandler.StatisticsCharts,
 		aiAdviceHandler.Get,
+		userProfileHandler.Upsert,
+		userProfileHandler.Get,
 		communityHandler.Create,
 		communityHandler.Join,
 		communityHandler.List,

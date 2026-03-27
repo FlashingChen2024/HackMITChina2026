@@ -139,6 +139,8 @@ curl http://127.0.0.1:8080/api/v1/ping
 
 ### AI 服务
 - `GET /api/v1/users/me/ai-advice` - 获取 AI 营养建议
+- `PUT /api/v1/users/me/profile` - 新增或更新个人画像
+- `GET /api/v1/users/me/profile` - 查询个人画像
 
 ### 社区功能
 - `POST /api/v1/communities/create` - 创建社区

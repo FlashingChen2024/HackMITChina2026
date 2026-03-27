@@ -40,6 +40,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.MealCurveData{},
 		&model.MealGrid{},
 		&model.User{},
+		&model.UserProfile{},
 		&model.DeviceBinding{},
 		&model.Community{},
 		&model.CommunityMember{},
