@@ -447,18 +447,13 @@ Authorization: Bearer <Your_JWT_Token>
 }
 ```
 
-## 第五部分：用户个人健康画像管理
-### 8. 个人健康画像管理 (User Profile)
+### 👤 第五部分：个人健康画像 (User Profile)
 
-用于收集用户的基本生理数据，为云端 AI 智能营养师提供计算基础代谢率 (BMR) 和制定个性化建议的上下文。
+用于收集用户的生理数据，为云端 AI 提供精准计算基础代谢率 (BMR) 的上下文。
 
 #### 8.1 获取个人健康画像
 
-前端进入“个人设置”页时，拉取当前数据进行表单回显。
-
 - **接口路径**: `GET /users/me/profile`
-  
-- **Header**: `Authorization: Bearer <Token>`
   
 - **成功响应** `200 OK`:
   
@@ -468,7 +463,7 @@ JSON
 ```
 {
   "user_id": "string",
-  "gender": "male", 
+  "gender": "male",
   "age": 22,
   "height_cm": 178.5,
   "weight_kg": 75.0,
@@ -476,24 +471,13 @@ JSON
 }
 ```
 
-- **特殊响应** `404 Not Found`:
+*(注：若用户未填写，可返回 404 或全 null 默认值)*
 
-JSON
+#### 8.2 更新个人健康画像
 
-```
-{
-  "error": "profile_not_found",
-  "message": "用户尚未填写健康画像"
-}
-```
-
-#### 8.2 更新/保存个人健康画像
-
-前端表单填完后提交。后端需执行 `Upsert` 逻辑（记录存在则更新，不存在则新建）。
+前端表单提交，后端执行 Upsert（存在则更新，不存在则新建）。
 
 - **接口路径**: `PUT /users/me/profile`
-  
-- **Header**: `Authorization: Bearer <Token>`
   
 - **请求体**:
   
@@ -502,10 +486,36 @@ JSON
 
 ```
 {
-  "gender": "string (枚举: male, female, other)",
+  "gender": "male",
   "age": 22,
   "height_cm": 178.5,
   "weight_kg": 75.0
+}
+```
+
+- **成功响应** `200 OK`: `{"message": "画像保存成功"}`
+
+---
+
+### 👁️ 第六部分：视觉智能与食物库 (Vision & Food DB)
+
+本模块采用“前端极限压缩 + 后端内存透传”的安全架构，实现拍照识菜功能。
+
+#### 9.1 图片视觉识别透传 (Proxy)
+
+前端上传压缩后的超小 Base64 图片，后端在内存中组装 API Key 转发给外部 AI（如阿里云/Google Vision），保护秘钥安全。
+
+- **接口路径**: `POST /vision/analyze`
+  
+- **请求体**:
+  
+
+JSON
+
+```
+{
+  "image_base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQAB...",
+  "compress_size_kb": 45
 }
 ```
 
@@ -515,9 +525,57 @@ JSON
 
 ```
 {
-  "message": "画像保存成功",
-  "updated_at": "2026-03-27T10:05:00Z"
+  "keywords_en": ["Fried Chicken", "Fast Food"],
+  "keywords_cn": ["炸鸡", "快餐"]
 }
 ```
 
----
+#### 9.2 食物库模糊匹配
+
+前端拿到 9.1 返回的关键词后，调用此接口从本地静态库匹配卡路里数据。
+
+- **接口路径**: `GET /food-library/search`
+  
+- **查询参数**: `keyword` (string, 必填)
+  
+- **成功响应** `200 OK`:
+  
+
+JSON
+
+```
+{
+  "keyword": "炸鸡",
+  "matches": [
+    {
+      "food_code": "FD001",
+      "food_name_cn": "炸鸡",
+      "default_unit_cal_per_100g": 260.0
+    }
+  ]
+}
+```
+
+#### 9.3 视觉识别结果确认挂载
+
+用户在前端确认菜品后，将其绑定到具体的就餐格子里。
+
+- **接口路径**: `POST /meals/{meal_id}/vision-confirm`
+  
+- **请求体**:
+  
+
+JSON
+
+```
+{
+  "grids": [
+    {
+      "grid_index": 1,
+      "food_code": "FD001"
+    }
+  ]
+}
+```
+
+- **成功响应** `200 OK`: `{"message": "视觉识别确认成功，卡路里已就绪"}`
