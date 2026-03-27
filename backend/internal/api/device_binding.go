@@ -31,30 +31,30 @@ func NewDeviceBindingHandler(service DeviceBindingService) *DeviceBindingHandler
 func (h *DeviceBindingHandler) Bind(c *gin.Context) {
 	var req bindDeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求体"})
 		return
 	}
 
 	userID := strings.TrimSpace(c.GetString("user_id"))
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token context"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的令牌上下文"})
 		return
 	}
 
 	if err := h.service.BindDevice(c.Request.Context(), userID, req.DeviceID); err != nil {
 		switch err {
 		case service.ErrInvalidInput:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "device_id is required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "设备ID是必填项"})
 		case service.ErrDeviceBoundToAnother:
-			c.JSON(http.StatusConflict, gin.H{"error": "device already bound to another user"})
+			c.JSON(http.StatusConflict, gin.H{"error": "设备已绑定到其他用户"})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "bind device failed"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "绑定设备失败"})
 		}
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":   "device bind success",
+		"message":   "绑定成功",
 		"device_id": strings.ToUpper(strings.TrimSpace(req.DeviceID)),
 	})
 }
@@ -62,7 +62,7 @@ func (h *DeviceBindingHandler) Bind(c *gin.Context) {
 func (h *DeviceBindingHandler) List(c *gin.Context) {
 	userID := strings.TrimSpace(c.GetString("user_id"))
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token context"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的令牌上下文"})
 		return
 	}
 
@@ -70,9 +70,9 @@ func (h *DeviceBindingHandler) List(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case service.ErrInvalidInput:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "用户ID是必填项"})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "list devices failed"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取设备列表失败"})
 		}
 		return
 	}

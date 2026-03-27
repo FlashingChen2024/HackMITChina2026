@@ -37,7 +37,7 @@ func NewTestAuthHandler() *TestAuthHandler {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req authRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求体"})
 		return
 	}
 
@@ -45,25 +45,25 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case service.ErrUserExists:
-			c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
+			c.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
 		case service.ErrInvalidInput:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "用户名和密码是必填项"})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "register failed"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败"})
 		}
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"user_id": user.ID,
-		"message": "register success",
+		"message": "注册成功",
 	})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req authRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求体"})
 		return
 	}
 
@@ -71,11 +71,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case service.ErrInvalidInput:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "username and password are required"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "用户名和密码是必填项"})
 		case service.ErrInvalidCredentials:
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid username or password"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的用户名或密码"})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "login failed"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "登录失败"})
 		}
 		return
 	}
