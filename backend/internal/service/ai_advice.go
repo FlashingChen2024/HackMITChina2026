@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -43,6 +42,7 @@ type AIAdviceResult struct {
 
 type AIAdviceStore interface {
 	GetLatestMealWithGrids(ctx context.Context, userID string) (model.Meal, []model.MealGrid, error)
+	GetUserProfileByUserID(ctx context.Context, userID string) (model.UserProfile, error)
 	SumTodayCalories(ctx context.Context, userID string, start time.Time, end time.Time) (float64, error)
 	AggregateDailyStatistics(
 		ctx context.Context,
@@ -76,13 +76,14 @@ func (s *AIAdviceService) GenerateAdvice(
 	userID string,
 	adviceType string,
 ) (AIAdviceResult, error) {
+	normalizedUserID := strings.TrimSpace(userID)
 	normalizedAdviceType := normalizeAdviceType(adviceType)
-	prompt, err := s.BuildPrompt(ctx, userID, normalizedAdviceType)
+	prompt, err := s.BuildPrompt(ctx, normalizedUserID, normalizedAdviceType)
 	if err != nil {
 		return AIAdviceResult{}, err
 	}
 	if s.generator == nil {
-		fallbackAdvice, fallbackAlert := buildFallbackAdvice(normalizedAdviceType)
+		fallbackAdvice, fallbackAlert := s.buildFallbackAdvice(ctx, normalizedUserID, normalizedAdviceType)
 		return AIAdviceResult{
 			Type:    normalizedAdviceType,
 			Advice:  fallbackAdvice,
@@ -93,7 +94,7 @@ func (s *AIAdviceService) GenerateAdvice(
 
 	rawAdvice, err := s.generator.Generate(ctx, prompt)
 	if err != nil {
-		fallbackAdvice, fallbackAlert := buildFallbackAdvice(normalizedAdviceType)
+		fallbackAdvice, fallbackAlert := s.buildFallbackAdvice(ctx, normalizedUserID, normalizedAdviceType)
 		return AIAdviceResult{
 			Type:    normalizedAdviceType,
 			Advice:  fallbackAdvice,
@@ -113,7 +114,7 @@ func (s *AIAdviceService) GenerateAdvice(
 		isAlert = inferIsAlertFromText(normalizedAdviceType, adviceText)
 	}
 	if adviceText == "" {
-		fallbackAdvice, fallbackAlert := buildFallbackAdvice(normalizedAdviceType)
+		fallbackAdvice, fallbackAlert := s.buildFallbackAdvice(ctx, normalizedUserID, normalizedAdviceType)
 		return AIAdviceResult{
 			Type:    normalizedAdviceType,
 			Advice:  fallbackAdvice,
@@ -130,7 +131,7 @@ func (s *AIAdviceService) GenerateAdvice(
 	}, nil
 }
 
-func buildFallbackAdvice(adviceType string) (string, bool) {
+func buildFallbackAdviceByType(adviceType string) (string, bool) {
 	switch adviceType {
 	case AdviceTypeDailyAlert:
 		return "今天这顿有点放飞，下一餐记得减油减盐，多补蔬菜和水分。", true
@@ -139,6 +140,64 @@ func buildFallbackAdvice(adviceType string) (string, bool) {
 	default:
 		return "这顿吃得挺努力，建议下一次放慢节奏，蔬菜再多一格会更稳。", false
 	}
+}
+
+func (s *AIAdviceService) buildFallbackAdvice(
+	ctx context.Context,
+	userID string,
+	adviceType string,
+) (string, bool) {
+	defaultAdvice, defaultAlert := buildFallbackAdviceByType(adviceType)
+	if userID == "" {
+		return defaultAdvice, defaultAlert
+	}
+
+	profile, err := s.store.GetUserProfileByUserID(ctx, userID)
+	if err != nil {
+		return defaultAdvice, defaultAlert
+	}
+
+	_, grids, err := s.store.GetLatestMealWithGrids(ctx, userID)
+	if err != nil {
+		return defaultAdvice, defaultAlert
+	}
+
+	totalCalories := sumMealCalories(grids)
+	bmi := calculateBMI(profile.HeightCM, profile.WeightKG)
+	if bmi <= 0 {
+		return defaultAdvice, defaultAlert
+	}
+
+	switch adviceType {
+	case AdviceTypeMealReview:
+		if bmi < 18.5 && totalCalories <= 450 {
+			return fmt.Sprintf(
+				"你现在 BMI 约 %.1f，这顿只有 %.0f kcal，太克制了。下一餐请加优质蛋白和主食，目标是稳步增肌。",
+				bmi,
+				totalCalories,
+			), false
+		}
+		if bmi >= 28 && totalCalories >= 850 {
+			return fmt.Sprintf(
+				"你现在 BMI 约 %.1f，这顿 %.0f kcal 且偏高油高热量。请立刻收油盐、减少炸物，下一餐用蔬菜+瘦蛋白拉回安全线。",
+				bmi,
+				totalCalories,
+			), true
+		}
+	case AdviceTypeDailyAlert:
+		if bmi >= 28 && totalCalories >= 850 {
+			return "高风险预警：当前体重负担较高且本餐热量过载，请立即停止高油炸饮食并优先执行控能方案。", true
+		}
+	case AdviceTypeNextMeal:
+		if bmi < 18.5 {
+			return "下一餐建议增肌模板：鸡胸/牛肉+米饭/红薯+两格蔬菜，保证蛋白和碳水同步补齐。", false
+		}
+		if bmi >= 28 {
+			return "下一餐建议控脂模板：一格瘦蛋白、一格粗粮、两格高纤蔬菜，避免油炸与含糖饮料。", true
+		}
+	}
+
+	return defaultAdvice, defaultAlert
 }
 
 func (s *AIAdviceService) BuildPrompt(ctx context.Context, userID string, adviceType string) (string, error) {
@@ -173,6 +232,11 @@ func (s *AIAdviceService) BuildPrompt(ctx context.Context, userID string, advice
 		return "", err
 	}
 
+	profileContext, err := s.buildProfileContext(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+
 	gridSummary := formatGridSummary(meal, grids)
 	threeDaySummary := formatThreeDaySummary(recentRows)
 	totalMealCalories := sumMealCalories(grids)
@@ -181,9 +245,10 @@ func (s *AIAdviceService) BuildPrompt(ctx context.Context, userID string, advice
 	switch adviceType {
 	case AdviceTypeDailyAlert:
 		prompt = fmt.Sprintf(
-			"%s。任务类型:%s。用户今日总摄入:%.1fkcal。最近一餐总摄入:%.1fkcal，详情:%s。过去三天趋势:%s。请判断是否触发饮食异常警报，并给出一句系统提示语。输出格式要求：仅返回JSON字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。",
+			"%s。任务类型:%s。%s。用户今日总摄入:%.1fkcal。最近一餐总摄入:%.1fkcal，详情:%s。过去三天趋势:%s。请判断是否触发饮食异常警报，并给出一句系统提示语。输出格式要求：仅返回JSON字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。",
 			driInstruction,
 			adviceType,
+			profileContext,
 			todayCalories,
 			totalMealCalories,
 			gridSummary,
@@ -191,18 +256,20 @@ func (s *AIAdviceService) BuildPrompt(ctx context.Context, userID string, advice
 		)
 	case AdviceTypeNextMeal:
 		prompt = fmt.Sprintf(
-			"%s。任务类型:%s。用户最近一餐详情:%s。用户今日总摄入:%.1fkcal。过去三天趋势:%s。请给出下一餐四格餐盒建议，每格给出菜名与推荐理由。输出格式要求：仅返回JSON字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。",
+			"%s。任务类型:%s。%s。用户最近一餐详情:%s。用户今日总摄入:%.1fkcal。过去三天趋势:%s。请给出下一餐四格餐盒建议，每格给出菜名与推荐理由。输出格式要求：仅返回JSON字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。",
 			driInstruction,
 			adviceType,
+			profileContext,
 			gridSummary,
 			todayCalories,
 			threeDaySummary,
 		)
 	default:
 		prompt = fmt.Sprintf(
-			"%s。任务类型:%s。用户最近一餐用时:%d分钟，总摄入:%.1fkcal，详情:%s。用户今日累计摄入:%.1fkcal。过去三天趋势:%s。请生成50字以内、带一点幽默感的健康点评。输出格式要求：仅返回JSON字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。",
+			"%s。任务类型:%s。%s。用户最近一餐用时:%d分钟，总摄入:%.1fkcal，详情:%s。用户今日累计摄入:%.1fkcal。过去三天趋势:%s。请生成50字以内、带一点幽默感的健康点评。输出格式要求：仅返回JSON字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。",
 			driInstruction,
 			adviceType,
+			profileContext,
 			meal.DurationMinutes,
 			totalMealCalories,
 			gridSummary,
@@ -211,8 +278,26 @@ func (s *AIAdviceService) BuildPrompt(ctx context.Context, userID string, advice
 		)
 	}
 
-	log.Printf("[AI_PROMPT] user_id=%s type=%s prompt=%s", userID, adviceType, prompt)
+	fmt.Printf("[AI_PROMPT] user_id=%s type=%s prompt=%s\n", userID, adviceType, prompt)
 	return prompt, nil
+}
+
+func (s *AIAdviceService) buildProfileContext(ctx context.Context, userID string) (string, error) {
+	profile, err := s.store.GetUserProfileByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "BasicPrompt: 未提供用户画像，请仅基于饮食数据给出通用建议", nil
+		}
+		return "", err
+	}
+
+	return fmt.Sprintf(
+		"AdvancedPrompt: 用户画像为身高%dcm、体重%.1fkg、性别%s、年龄%d岁，请结合生理信息给出个性化建议",
+		profile.HeightCM,
+		profile.WeightKG,
+		strings.TrimSpace(profile.Gender),
+		profile.Age,
+	), nil
 }
 
 func parseModelJSONResult(raw string) (string, bool, bool) {
@@ -495,4 +580,12 @@ func normalizeSummaryDate(raw string) string {
 		return t.UTC().Format("2006-01-02")
 	}
 	return ""
+}
+
+func calculateBMI(heightCM int, weightKG float64) float64 {
+	if heightCM <= 0 || weightKG <= 0 {
+		return 0
+	}
+	heightM := float64(heightCM) / 100.0
+	return weightKG / (heightM * heightM)
 }

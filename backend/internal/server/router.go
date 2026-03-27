@@ -18,6 +18,8 @@ func NewRouter(
 	mealTrajectoryHandler gin.HandlerFunc,
 	statisticsChartsHandler gin.HandlerFunc,
 	aiAdviceHandler gin.HandlerFunc,
+	putUserProfileHandler gin.HandlerFunc,
+	getUserProfileHandler gin.HandlerFunc,
 	createCommunityHandler gin.HandlerFunc,
 	joinCommunityHandler gin.HandlerFunc,
 	listCommunitiesHandler gin.HandlerFunc,
@@ -41,6 +43,8 @@ func NewRouter(
 	authorized.GET("/meals/:meal_id/trajectory", mealTrajectoryHandler)
 	authorized.GET("/users/me/statistics/charts", statisticsChartsHandler)
 	authorized.GET("/users/me/ai-advice", aiAdviceHandler)
+	authorized.PUT("/users/me/profile", putUserProfileHandler)
+	authorized.GET("/users/me/profile", getUserProfileHandler)
 	authorized.PUT("/meals/:meal_id/foods", putMealFoodsHandler)
 	authorized.POST("/communities/create", createCommunityHandler)
 	authorized.POST("/communities/:community_id/join", joinCommunityHandler)
@@ -64,6 +68,8 @@ func NewRouter(
 		v1Authorized.GET("/meals/:meal_id/trajectory", mealTrajectoryHandler)
 		v1Authorized.GET("/users/me/statistics/charts", statisticsChartsHandler)
 		v1Authorized.GET("/users/me/ai-advice", aiAdviceHandler)
+		v1Authorized.PUT("/users/me/profile", putUserProfileHandler)
+		v1Authorized.GET("/users/me/profile", getUserProfileHandler)
 		v1Authorized.PUT("/meals/:meal_id/foods", putMealFoodsHandler)
 		v1Authorized.POST("/communities/create", createCommunityHandler)
 		v1Authorized.POST("/communities/:community_id/join", joinCommunityHandler)

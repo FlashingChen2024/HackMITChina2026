@@ -34,6 +34,8 @@ func buildRouter(jwtMiddleware gin.HandlerFunc) *gin.Engine {
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
 	)
 }
 
@@ -101,6 +103,30 @@ func TestMealsRoutes(t *testing.T) {
 	router.ServeHTTP(aiResp, aiReq)
 	if aiResp.Code != http.StatusOK {
 		t.Fatalf("expected ai advice status 200, got %d", aiResp.Code)
+	}
+}
+
+func TestUserProfileRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := buildRouter(func(c *gin.Context) { c.Next() })
+
+	putReq := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/users/me/profile",
+		bytes.NewBufferString(`{"height_cm":170,"weight_kg":68.5,"gender":"male","age":25}`),
+	)
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp := httptest.NewRecorder()
+	router.ServeHTTP(putResp, putReq)
+	if putResp.Code != http.StatusOK {
+		t.Fatalf("expected put profile status 200, got %d", putResp.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/users/me/profile", nil)
+	getResp := httptest.NewRecorder()
+	router.ServeHTTP(getResp, getReq)
+	if getResp.Code != http.StatusOK {
+		t.Fatalf("expected get profile status 200, got %d", getResp.Code)
 	}
 }
 
@@ -183,6 +209,8 @@ func TestProtectedRoutesRequireJWT(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/meals/meal-1/trajectory"},
 		{method: http.MethodGet, path: "/api/v1/users/me/statistics/charts"},
 		{method: http.MethodGet, path: "/api/v1/users/me/ai-advice"},
+		{method: http.MethodPut, path: "/api/v1/users/me/profile", body: `{"height_cm":170,"weight_kg":68.5,"gender":"male","age":25}`},
+		{method: http.MethodGet, path: "/api/v1/users/me/profile"},
 		{method: http.MethodPut, path: "/api/v1/meals/meal-1/foods", body: `{"grids":[]}`},
 		{method: http.MethodPost, path: "/api/v1/communities/create", body: `{"name":"MIT","description":"demo"}`},
 		{method: http.MethodPost, path: "/api/v1/communities/community-1/join"},

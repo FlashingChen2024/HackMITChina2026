@@ -18,8 +18,16 @@ func NewGormMealQueryStore(db *gorm.DB) *GormMealQueryStore {
 	return &GormMealQueryStore{db: db}
 }
 
-func (s *GormMealQueryStore) ListMeals(ctx context.Context, cursor *time.Time, limit int) ([]model.Meal, error) {
-	query := s.db.WithContext(ctx).Model(&model.Meal{}).Order("start_time DESC")
+func (s *GormMealQueryStore) ListMeals(
+	ctx context.Context,
+	userID string,
+	cursor *time.Time,
+	limit int,
+) ([]model.Meal, error) {
+	query := s.db.WithContext(ctx).
+		Model(&model.Meal{}).
+		Where("user_id = ?", userID).
+		Order("start_time DESC")
 	if cursor != nil {
 		query = query.Where("start_time < ?", cursor.UTC())
 	}
@@ -31,9 +39,16 @@ func (s *GormMealQueryStore) ListMeals(ctx context.Context, cursor *time.Time, l
 	return meals, nil
 }
 
-func (s *GormMealQueryStore) GetMealByID(ctx context.Context, mealID string) (model.Meal, error) {
+func (s *GormMealQueryStore) GetMealByID(
+	ctx context.Context,
+	userID string,
+	mealID string,
+) (model.Meal, error) {
 	var meal model.Meal
-	if err := s.db.WithContext(ctx).Model(&model.Meal{}).Where("meal_id = ?", mealID).First(&meal).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Model(&model.Meal{}).
+		Where("meal_id = ? AND user_id = ?", mealID, userID).
+		First(&meal).Error; err != nil {
 		return model.Meal{}, fmt.Errorf("get meal by id: %w", err)
 	}
 	return meal, nil
@@ -79,16 +94,20 @@ func (s *GormMealQueryStore) UpdateMealGridFood(
 
 func (s *GormMealQueryStore) ListMealTrajectory(
 	ctx context.Context,
+	userID string,
 	mealID string,
 	lastTimestamp *time.Time,
 ) ([]model.MealCurveData, error) {
-	query := s.db.WithContext(ctx).Model(&model.MealCurveData{}).Where("meal_id = ?", mealID)
+	query := s.db.WithContext(ctx).
+		Model(&model.MealCurveData{}).
+		Joins("JOIN meals AS m ON m.meal_id = meal_curve_data.meal_id").
+		Where("meal_curve_data.meal_id = ? AND m.user_id = ?", mealID, userID)
 	if lastTimestamp != nil {
-		query = query.Where("timestamp > ?", lastTimestamp.UTC())
+		query = query.Where("meal_curve_data.timestamp > ?", lastTimestamp.UTC())
 	}
 
 	var points []model.MealCurveData
-	if err := query.Order("timestamp ASC").Find(&points).Error; err != nil {
+	if err := query.Order("meal_curve_data.timestamp ASC").Find(&points).Error; err != nil {
 		return nil, fmt.Errorf("list meal trajectory: %w", err)
 	}
 	return points, nil

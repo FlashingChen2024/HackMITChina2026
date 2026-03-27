@@ -13,11 +13,16 @@ import (
 const MealListPageSize = 20
 
 type MealQueryStore interface {
-	ListMeals(ctx context.Context, cursor *time.Time, limit int) ([]model.Meal, error)
-	GetMealByID(ctx context.Context, mealID string) (model.Meal, error)
+	ListMeals(ctx context.Context, userID string, cursor *time.Time, limit int) ([]model.Meal, error)
+	GetMealByID(ctx context.Context, userID string, mealID string) (model.Meal, error)
 	ListMealGrids(ctx context.Context, mealID string) ([]model.MealGrid, error)
 	UpdateMealGridFood(ctx context.Context, mealID string, gridIndex int, foodName string, unitCalPer100G float64) error
-	ListMealTrajectory(ctx context.Context, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error)
+	ListMealTrajectory(
+		ctx context.Context,
+		userID string,
+		mealID string,
+		lastTimestamp *time.Time,
+	) ([]model.MealCurveData, error)
 	AggregateDailyStatistics(ctx context.Context, userID string, startDate time.Time, endDate time.Time) ([]model.DailyStatisticsRow, error)
 }
 
@@ -29,16 +34,36 @@ func NewMealQueryService(store MealQueryStore) *MealQueryService {
 	return &MealQueryService{store: store}
 }
 
-func (s *MealQueryService) ListMeals(ctx context.Context, cursor *time.Time) ([]model.Meal, error) {
-	return s.store.ListMeals(ctx, cursor, MealListPageSize)
+func (s *MealQueryService) ListMeals(ctx context.Context, userID string, cursor *time.Time) ([]model.Meal, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil, ErrInvalidInput
+	}
+
+	return s.store.ListMeals(ctx, userID, cursor, MealListPageSize)
 }
 
-func (s *MealQueryService) GetMealByID(ctx context.Context, mealID string) (model.Meal, error) {
-	return s.store.GetMealByID(ctx, mealID)
+func (s *MealQueryService) GetMealByID(ctx context.Context, userID string, mealID string) (model.Meal, error) {
+	userID = strings.TrimSpace(userID)
+	mealID = strings.TrimSpace(mealID)
+	if userID == "" || mealID == "" {
+		return model.Meal{}, ErrInvalidInput
+	}
+	return s.store.GetMealByID(ctx, userID, mealID)
 }
 
-func (s *MealQueryService) GetMealDetail(ctx context.Context, mealID string) (model.Meal, []model.MealGrid, error) {
-	meal, err := s.store.GetMealByID(ctx, mealID)
+func (s *MealQueryService) GetMealDetail(
+	ctx context.Context,
+	userID string,
+	mealID string,
+) (model.Meal, []model.MealGrid, error) {
+	userID = strings.TrimSpace(userID)
+	mealID = strings.TrimSpace(mealID)
+	if userID == "" || mealID == "" {
+		return model.Meal{}, nil, ErrInvalidInput
+	}
+
+	meal, err := s.store.GetMealByID(ctx, userID, mealID)
 	if err != nil {
 		return model.Meal{}, nil, err
 	}
@@ -51,13 +76,19 @@ func (s *MealQueryService) GetMealDetail(ctx context.Context, mealID string) (mo
 	return meal, grids, nil
 }
 
-func (s *MealQueryService) AttachFoods(ctx context.Context, mealID string, grids []model.MealGrid) error {
+func (s *MealQueryService) AttachFoods(
+	ctx context.Context,
+	userID string,
+	mealID string,
+	grids []model.MealGrid,
+) error {
+	userID = strings.TrimSpace(userID)
 	mealID = strings.TrimSpace(mealID)
-	if mealID == "" || len(grids) == 0 {
+	if userID == "" || mealID == "" || len(grids) == 0 {
 		return ErrInvalidInput
 	}
 
-	if _, err := s.store.GetMealByID(ctx, mealID); err != nil {
+	if _, err := s.store.GetMealByID(ctx, userID, mealID); err != nil {
 		return err
 	}
 
@@ -109,10 +140,17 @@ func (s *MealQueryService) AttachFoods(ctx context.Context, mealID string, grids
 
 func (s *MealQueryService) GetMealTrajectory(
 	ctx context.Context,
+	userID string,
 	mealID string,
 	lastTimestamp *time.Time,
 ) ([]model.MealCurveData, error) {
-	return s.store.ListMealTrajectory(ctx, mealID, lastTimestamp)
+	userID = strings.TrimSpace(userID)
+	mealID = strings.TrimSpace(mealID)
+	if userID == "" || mealID == "" {
+		return nil, ErrInvalidInput
+	}
+
+	return s.store.ListMealTrajectory(ctx, userID, mealID, lastTimestamp)
 }
 
 func (s *MealQueryService) AggregateDailyStatistics(

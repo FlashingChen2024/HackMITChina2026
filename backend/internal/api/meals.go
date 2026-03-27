@@ -16,10 +16,10 @@ import (
 )
 
 type MealQueryService interface {
-	ListMeals(ctx context.Context, cursor *time.Time) ([]model.Meal, error)
-	GetMealDetail(ctx context.Context, mealID string) (model.Meal, []model.MealGrid, error)
-	AttachFoods(ctx context.Context, mealID string, grids []model.MealGrid) error
-	GetMealTrajectory(ctx context.Context, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error)
+	ListMeals(ctx context.Context, userID string, cursor *time.Time) ([]model.Meal, error)
+	GetMealDetail(ctx context.Context, userID string, mealID string) (model.Meal, []model.MealGrid, error)
+	AttachFoods(ctx context.Context, userID string, mealID string, grids []model.MealGrid) error
+	GetMealTrajectory(ctx context.Context, userID string, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error)
 	AggregateDailyStatistics(
 		ctx context.Context,
 		userID string,
@@ -92,22 +92,33 @@ func NewMealsHandler(service MealQueryService) *MealsHandler {
 }
 
 func (h *MealsHandler) List(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("user_id"))
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	cursor, err := parseMealCursor(c.Query("cursor"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cursor must be RFC3339 or unix seconds"})
 		return
 	}
 
-	meals, err := h.service.ListMeals(c.Request.Context(), cursor)
+	meals, err := h.service.ListMeals(c.Request.Context(), userID, cursor)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "list meals failed"})
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list meals failed"})
+		}
 		return
 	}
 
 	items := make([]mealListItemResponse, 0, len(meals))
 	nextCursor := ""
 	for _, meal := range meals {
-		_, grids, err := h.service.GetMealDetail(c.Request.Context(), meal.MealID)
+		_, grids, err := h.service.GetMealDetail(c.Request.Context(), userID, meal.MealID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "list meals failed"})
 			return
@@ -130,26 +141,43 @@ func (h *MealsHandler) List(c *gin.Context) {
 }
 
 func (h *MealsHandler) GetByID(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("user_id"))
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	mealID := c.Param("meal_id")
 	if mealID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "meal_id is required"})
 		return
 	}
 
-	meal, grids, err := h.service.GetMealDetail(c.Request.Context(), mealID)
+	meal, grids, err := h.service.GetMealDetail(c.Request.Context(), userID, mealID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		case errors.Is(err, gorm.ErrRecordNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "meal not found"})
 			return
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "get meal failed"})
+			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "get meal failed"})
-		return
 	}
 
 	c.JSON(http.StatusOK, toMealDetailResponse(meal, grids))
 }
 
 func (h *MealsHandler) PutFoods(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("user_id"))
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	mealID := c.Param("meal_id")
 	if mealID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "meal_id is required"})
@@ -188,7 +216,7 @@ func (h *MealsHandler) PutFoods(c *gin.Context) {
 		})
 	}
 
-	if err := h.service.AttachFoods(c.Request.Context(), mealID, grids); err != nil {
+	if err := h.service.AttachFoods(c.Request.Context(), userID, mealID, grids); err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -204,6 +232,12 @@ func (h *MealsHandler) PutFoods(c *gin.Context) {
 }
 
 func (h *MealsHandler) Trajectory(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString("user_id"))
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	mealID := c.Param("meal_id")
 	if mealID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "meal_id is required"})
@@ -222,9 +256,14 @@ func (h *MealsHandler) Trajectory(c *gin.Context) {
 		return
 	}
 
-	points, err := h.service.GetMealTrajectory(c.Request.Context(), mealID, lastTimestamp)
+	points, err := h.service.GetMealTrajectory(c.Request.Context(), userID, mealID, lastTimestamp)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "get meal trajectory failed"})
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "get meal trajectory failed"})
+		}
 		return
 	}
 

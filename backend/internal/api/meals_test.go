@@ -30,34 +30,64 @@ type fakeMealQueryService struct {
 	attachErr error
 	statsErr  error
 
-	lastCursor      *time.Time
-	lastTS          *time.Time
-	lastAttachMeal  string
-	lastAttachGrids []model.MealGrid
-	lastStatsUserID string
-	lastStatsStart  time.Time
-	lastStatsEnd    time.Time
+	lastCursor           *time.Time
+	lastListUserID       string
+	lastDetailUserID     string
+	lastDetailMealID     string
+	lastTrajectoryUserID string
+	lastTrajectoryMealID string
+	lastAttachUserID     string
+	lastTS               *time.Time
+	lastAttachMeal       string
+	lastAttachGrids      []model.MealGrid
+	lastStatsUserID      string
+	lastStatsStart       time.Time
+	lastStatsEnd         time.Time
 }
 
-func (f *fakeMealQueryService) ListMeals(_ context.Context, cursor *time.Time) ([]model.Meal, error) {
+func (f *fakeMealQueryService) ListMeals(
+	_ context.Context,
+	userID string,
+	cursor *time.Time,
+) ([]model.Meal, error) {
+	f.lastListUserID = userID
 	f.lastCursor = cursor
 	return f.meals, f.listErr
 }
 
-func (f *fakeMealQueryService) GetMealDetail(_ context.Context, _ string) (model.Meal, []model.MealGrid, error) {
+func (f *fakeMealQueryService) GetMealDetail(
+	_ context.Context,
+	userID string,
+	mealID string,
+) (model.Meal, []model.MealGrid, error) {
+	f.lastDetailUserID = userID
+	f.lastDetailMealID = mealID
 	if f.detailErr != nil {
 		return model.Meal{}, nil, f.detailErr
 	}
 	return f.meal, f.grids, nil
 }
 
-func (f *fakeMealQueryService) AttachFoods(_ context.Context, mealID string, grids []model.MealGrid) error {
+func (f *fakeMealQueryService) AttachFoods(
+	_ context.Context,
+	userID string,
+	mealID string,
+	grids []model.MealGrid,
+) error {
+	f.lastAttachUserID = userID
 	f.lastAttachMeal = mealID
 	f.lastAttachGrids = grids
 	return f.attachErr
 }
 
-func (f *fakeMealQueryService) GetMealTrajectory(_ context.Context, _ string, lastTimestamp *time.Time) ([]model.MealCurveData, error) {
+func (f *fakeMealQueryService) GetMealTrajectory(
+	_ context.Context,
+	userID string,
+	mealID string,
+	lastTimestamp *time.Time,
+) ([]model.MealCurveData, error) {
+	f.lastTrajectoryUserID = userID
+	f.lastTrajectoryMealID = mealID
 	f.lastTS = lastTimestamp
 	return f.trajectory, f.trajErr
 }
@@ -91,6 +121,10 @@ func TestMealsListReturnsNextCursor(t *testing.T) {
 
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.GET("/api/v1/meals", handler.List)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/meals", nil)
@@ -115,6 +149,9 @@ func TestMealsListReturnsNextCursor(t *testing.T) {
 	if payload.NextCursor != start.Format(time.RFC3339) {
 		t.Fatalf("expected next_cursor=%s, got %s", start.Format(time.RFC3339), payload.NextCursor)
 	}
+	if service.lastListUserID != "user-1" {
+		t.Fatalf("expected user_id user-1, got %s", service.lastListUserID)
+	}
 }
 
 func TestMealsListRejectsInvalidCursor(t *testing.T) {
@@ -123,6 +160,10 @@ func TestMealsListRejectsInvalidCursor(t *testing.T) {
 	service := &fakeMealQueryService{}
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.GET("/api/v1/meals", handler.List)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/meals?cursor=bad-cursor", nil)
@@ -140,6 +181,10 @@ func TestMealDetailNotFound(t *testing.T) {
 	service := &fakeMealQueryService{detailErr: gorm.ErrRecordNotFound}
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.GET("/api/v1/meals/:meal_id", handler.GetByID)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/meals/meal-missing", nil)
@@ -167,6 +212,10 @@ func TestMealDetailReturnsGridDetails(t *testing.T) {
 
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.GET("/api/v1/meals/:meal_id", handler.GetByID)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/meals/meal-1", nil)
@@ -193,6 +242,9 @@ func TestMealDetailReturnsGridDetails(t *testing.T) {
 	if len(payload.GridDetails) != 1 || payload.GridDetails[0].GridIndex != 1 {
 		t.Fatalf("expected 1 grid detail with index=1")
 	}
+	if service.lastDetailUserID != "user-1" || service.lastDetailMealID != "meal-1" {
+		t.Fatalf("expected detail query for user-1/meal-1, got %s/%s", service.lastDetailUserID, service.lastDetailMealID)
+	}
 }
 
 func TestMealPutFoodsSuccess(t *testing.T) {
@@ -201,6 +253,10 @@ func TestMealPutFoodsSuccess(t *testing.T) {
 	service := &fakeMealQueryService{}
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.PUT("/api/v1/meals/:meal_id/foods", handler.PutFoods)
 
 	body := `{"grids":[{"grid_index":1,"food_name":"糙米饭","unit_cal_per_100g":116}]}`
@@ -218,6 +274,9 @@ func TestMealPutFoodsSuccess(t *testing.T) {
 	if len(service.lastAttachGrids) != 1 || service.lastAttachGrids[0].GridIndex != 1 {
 		t.Fatalf("expected one grid update forwarded")
 	}
+	if service.lastAttachUserID != "user-1" {
+		t.Fatalf("expected attach user_id user-1, got %s", service.lastAttachUserID)
+	}
 }
 
 func TestMealPutFoodsNotFound(t *testing.T) {
@@ -226,6 +285,10 @@ func TestMealPutFoodsNotFound(t *testing.T) {
 	service := &fakeMealQueryService{attachErr: gorm.ErrRecordNotFound}
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.PUT("/api/v1/meals/:meal_id/foods", handler.PutFoods)
 
 	body := `{"grids":[{"grid_index":1,"food_name":"糙米饭","unit_cal_per_100g":116}]}`
@@ -245,6 +308,10 @@ func TestMealPutFoodsBadRequestOnInvalidServiceInput(t *testing.T) {
 	service := &fakeMealQueryService{attachErr: service.ErrInvalidInput}
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.PUT("/api/v1/meals/:meal_id/foods", handler.PutFoods)
 
 	body := `{"grids":[{"grid_index":1,"food_name":"糙米饭","unit_cal_per_100g":116}]}`
@@ -272,6 +339,10 @@ func TestMealTrajectoryReturnsPoints(t *testing.T) {
 
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.GET("/api/v1/meals/:meal_id/trajectory", handler.Trajectory)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/meals/meal-1/trajectory", nil)
@@ -307,6 +378,9 @@ func TestMealTrajectoryReturnsPoints(t *testing.T) {
 	if payload.LastTimestamp != t2.Format(time.RFC3339Nano) {
 		t.Fatalf("expected last_timestamp=%s, got %s", t2.Format(time.RFC3339Nano), payload.LastTimestamp)
 	}
+	if service.lastTrajectoryUserID != "user-1" || service.lastTrajectoryMealID != "meal-1" {
+		t.Fatalf("expected trajectory query for user-1/meal-1, got %s/%s", service.lastTrajectoryUserID, service.lastTrajectoryMealID)
+	}
 }
 
 func TestMealTrajectoryRejectsInvalidLastTimestamp(t *testing.T) {
@@ -314,6 +388,10 @@ func TestMealTrajectoryRejectsInvalidLastTimestamp(t *testing.T) {
 
 	handler := api.NewMealsHandler(&fakeMealQueryService{})
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.GET("/api/v1/meals/:meal_id/trajectory", handler.Trajectory)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/meals/meal-1/trajectory?last_timestamp=bad", nil)
@@ -331,6 +409,10 @@ func TestMealTrajectoryAcceptsRFC3339NanoLastTimestamp(t *testing.T) {
 	service := &fakeMealQueryService{}
 	handler := api.NewMealsHandler(service)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", "user-1")
+		c.Next()
+	})
 	router.GET("/api/v1/meals/:meal_id/trajectory", handler.Trajectory)
 
 	last := time.Date(2026, 3, 13, 10, 0, 5, 456000000, time.UTC).Format(time.RFC3339Nano)

@@ -1,0 +1,1570 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "info": {
+    "title": "K-XYZ 智能餐盒全链路 API",
+    "version": "4.4.0",
+    "description": "根据 D:\\MIT\\newdev\\doc\\API.md（v4.4版）整理生成的 OpenAPI 描述。除健康检查、硬件遥测上报、注册、登录外，其余接口默认需要 Bearer JWT。"
+  },
+  "servers": [
+    {
+      "url": "https://api.mit.chenyuxia.com/api/v1",
+      "description": "生产环境"
+    },
+    {
+      "url": "http://127.0.0.1:8080/api/v1",
+      "description": "本地开发"
+    }
+  ],
+  "tags": [
+    {
+      "name": "System",
+      "description": "基础运维接口"
+    },
+    {
+      "name": "IoT Gateway",
+      "description": "硬件底层网关接口"
+    },
+    {
+      "name": "Auth",
+      "description": "账户认证接口"
+    },
+    {
+      "name": "Devices",
+      "description": "设备绑定与管理接口"
+    },
+    {
+      "name": "Meals",
+      "description": "就餐数据相关接口"
+    },
+    {
+      "name": "AI",
+      "description": "AI 建议与统计接口"
+    },
+    {
+      "name": "Community",
+      "description": "社区与看板接口"
+    },
+    {
+      "name": "User Profile",
+      "description": "个人健康画像接口"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/ping": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "健康检查",
+        "description": "基础运维接口，用于检测服务是否存活。",
+        "operationId": "ping",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "健康检查成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PingResponse"
+                },
+                "example": {
+                  "message": "pong",
+                  "timestamp": "2026-03-14T09:10:37Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hardware/telemetry": {
+      "post": {
+        "tags": [
+          "IoT Gateway"
+        ],
+        "summary": "硬件遥测数据上报",
+        "description": "无需 JWT；后端根据 device_id 执行物理拦截。",
+        "operationId": "reportTelemetry",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryRequest"
+              },
+              "example": {
+                "device_id": "ESP32_A1B2C3",
+                "timestamp": "2026-03-14T09:10:00Z",
+                "weights": {
+                  "grid_1": 150.5,
+                  "grid_2": 80.0,
+                  "grid_3": 120.0,
+                  "grid_4": 50.0
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "遥测数据处理成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryResponse"
+                },
+                "example": {
+                  "device_id": "ESP32_A1B2C3",
+                  "previous_state": "IDLE",
+                  "current_state": "SERVING",
+                  "timestamp": "2026-03-14T09:10:05Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "用户注册",
+        "operationId": "register",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              },
+              "example": {
+                "username": "string",
+                "password": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                },
+                "example": {
+                  "user_id": "string",
+                  "message": "register success"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "用户登录",
+        "operationId": "login",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              },
+              "example": {
+                "username": "string",
+                "password": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                },
+                "example": {
+                  "token": "string",
+                  "user_id": "string",
+                  "username": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/bind": {
+      "post": {
+        "tags": [
+          "Devices"
+        ],
+        "summary": "绑定物理餐盒",
+        "operationId": "bindDevice",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindDeviceRequest"
+              },
+              "example": {
+                "device_id": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "设备绑定成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindDeviceResponse"
+                },
+                "example": {
+                  "message": "device bind success",
+                  "device_id": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices": {
+      "get": {
+        "tags": [
+          "Devices"
+        ],
+        "summary": "查询已绑定设备列表",
+        "operationId": "listDevices",
+        "responses": {
+          "200": {
+            "description": "设备列表查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicesListResponse"
+                },
+                "example": {
+                  "devices": [
+                    "ESP32_A1B2C3",
+                    "ESP32_D4E5F6"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/devices/{device_id}": {
+      "delete": {
+        "tags": [
+          "Devices"
+        ],
+        "summary": "解除绑定设备",
+        "operationId": "unbindDevice",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "description": "设备 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "设备解绑成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnbindDeviceResponse"
+                },
+                "example": {
+                  "message": "device unbind success",
+                  "device_id": "ESP32_A1B2C3"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meals/{meal_id}/foods": {
+      "put": {
+        "tags": [
+          "Meals"
+        ],
+        "summary": "菜品视觉识别与卡路里点火",
+        "operationId": "updateMealFoods",
+        "parameters": [
+          {
+            "name": "meal_id",
+            "in": "path",
+            "required": true,
+            "description": "用餐 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MealFoodsUpdateRequest"
+              },
+              "example": {
+                "grids": [
+                  {
+                    "grid_index": 1,
+                    "food_name": "糙米饭",
+                    "unit_cal_per_100g": 116.0
+                  },
+                  {
+                    "grid_index": 2,
+                    "food_name": "西红柿炒鸡蛋",
+                    "unit_cal_per_100g": 80.0
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "食物信息挂载成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                },
+                "example": {
+                  "message": "食物信息挂载成功，卡路里已就绪"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meals": {
+      "get": {
+        "tags": [
+          "Meals"
+        ],
+        "summary": "获取历史用餐列表",
+        "description": "API.md 标记为分页接口，但未明确列出请求查询参数；此处仅按文档保留响应结构。",
+        "operationId": "listMeals",
+        "responses": {
+          "200": {
+            "description": "历史用餐列表查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealsListResponse"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "meal_id": "str",
+                      "start_time": "2026-03-14T09:00:01Z",
+                      "duration_minutes": 25,
+                      "total_meal_cal": 450
+                    }
+                  ],
+                  "next_cursor": "..."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meals/{meal_id}": {
+      "get": {
+        "tags": [
+          "Meals"
+        ],
+        "summary": "获取单次用餐高精详情",
+        "operationId": "getMealDetail",
+        "parameters": [
+          {
+            "name": "meal_id",
+            "in": "path",
+            "required": true,
+            "description": "用餐 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "用餐详情查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealDetailResponse"
+                },
+                "example": {
+                  "meal_id": "str",
+                  "grid_details": [
+                    {
+                      "grid_index": 1,
+                      "food_name": "糙米饭",
+                      "served_g": 200,
+                      "intake_g": 150,
+                      "total_cal": 174,
+                      "speed_g_per_min": 6.0
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/meals/{meal_id}/trajectory": {
+      "get": {
+        "tags": [
+          "Meals"
+        ],
+        "summary": "获取就餐时序轨迹",
+        "description": "支持增量查询与降采样。",
+        "operationId": "getMealTrajectory",
+        "parameters": [
+          {
+            "name": "meal_id",
+            "in": "path",
+            "required": true,
+            "description": "用餐 ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "last_timestamp",
+            "in": "query",
+            "required": false,
+            "description": "增量查询基准时间戳。传入上一次返回结果中的 last_timestamp 后，接口仅返回该时间点之后的新增轨迹数据。",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "sample_interval",
+            "in": "query",
+            "required": false,
+            "description": "降采样时间间隔，单位为秒。",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "轨迹查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MealTrajectoryResponse"
+                },
+                "example": {
+                  "meal_id": "string",
+                  "items": [
+                    {
+                      "timestamp": "2026-03-14T09:00:01Z",
+                      "weights": {
+                        "grid_1": 195.0,
+                        "grid_2": 80.0,
+                        "grid_3": 120.0,
+                        "grid_4": 50.0
+                      }
+                    }
+                  ],
+                  "last_timestamp": "2026-03-14T09:00:01Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/statistics/charts": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "summary": "个人饮食图表数据聚合",
+        "operationId": "getStatisticsCharts",
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "description": "开始日期，格式 YYYY-MM-DD",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "description": "结束日期，格式 YYYY-MM-DD，且应大于等于 start_date",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "图表数据查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatisticsChartsResponse"
+                },
+                "example": {
+                  "user_id": "string",
+                  "date_range": [
+                    "2026-03-12",
+                    "2026-03-19"
+                  ],
+                  "chart_data": {
+                    "dates": [
+                      "03-01",
+                      "03-02"
+                    ],
+                    "daily_served_g": [
+                      980.0,
+                      860.0
+                    ],
+                    "daily_intake_g": [
+                      750.0,
+                      620.0
+                    ],
+                    "daily_calories": [
+                      750.5,
+                      620.0
+                    ],
+                    "avg_speed_g_per_min": [
+                      15.2,
+                      14.0
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/ai-advice": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "summary": "云端 AI 智能营养师",
+        "operationId": "getAiAdvice",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": true,
+            "description": "建议类型",
+            "schema": {
+              "$ref": "#/components/schemas/AiAdviceType"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AI 建议获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAdviceResponse"
+                },
+                "example": {
+                  "type": "meal_review",
+                  "advice": "吃这么快赶火车吗...",
+                  "is_alert": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/communities/create": {
+      "post": {
+        "tags": [
+          "Community"
+        ],
+        "summary": "创建社区",
+        "operationId": "createCommunity",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommunityRequest"
+              },
+              "example": {
+                "name": "string",
+                "description": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建社区成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateCommunityResponse"
+                },
+                "example": {
+                  "community_id": "string",
+                  "message": "创建成功"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/communities/{community_id}/join": {
+      "post": {
+        "tags": [
+          "Community"
+        ],
+        "summary": "加入社区",
+        "operationId": "joinCommunity",
+        "parameters": [
+          {
+            "name": "community_id",
+            "in": "path",
+            "required": true,
+            "description": "社区 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "加入社区成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinCommunityResponse"
+                },
+                "example": {
+                  "message": "加入成功"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/communities": {
+      "get": {
+        "tags": [
+          "Community"
+        ],
+        "summary": "获取我的社区列表",
+        "operationId": "listCommunities",
+        "responses": {
+          "200": {
+            "description": "社区列表查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunitiesListResponse"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "community_id": "comm_12345",
+                      "name": "MIT 黑客松健康营",
+                      "description": "一起吃得更健康",
+                      "member_count": 102
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/communities/{community_id}/dashboard": {
+      "get": {
+        "tags": [
+          "Community"
+        ],
+        "summary": "获取社区聚合看板数据",
+        "operationId": "getCommunityDashboard",
+        "parameters": [
+          {
+            "name": "community_id",
+            "in": "path",
+            "required": true,
+            "description": "社区 ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "社区看板数据查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityDashboardResponse"
+                },
+                "example": {
+                  "community_id": "comm_12345",
+                  "community_name": "MIT 黑客松健康营",
+                  "member_count": 102,
+                  "food_avg_stats": [
+                    {
+                      "food_name": "西红柿炒鸡蛋",
+                      "avg_served_g": 180.5,
+                      "avg_intake_g": 150.5,
+                      "avg_speed_g_per_min": 12.5
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/profile": {
+      "get": {
+        "tags": [
+          "User Profile"
+        ],
+        "summary": "获取个人健康画像",
+        "operationId": "getUserProfile",
+        "responses": {
+          "200": {
+            "description": "画像查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileResponse"
+                },
+                "example": {
+                  "user_id": "string",
+                  "gender": "male",
+                  "age": 22,
+                  "height_cm": 178.5,
+                  "weight_kg": 75.0,
+                  "updated_at": "2026-03-27T10:00:00Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "用户尚未填写健康画像",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileNotFoundResponse"
+                },
+                "example": {
+                  "error": "profile_not_found",
+                  "message": "用户尚未填写健康画像"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "User Profile"
+        ],
+        "summary": "更新或保存个人健康画像",
+        "description": "后端需执行 Upsert 逻辑：记录存在则更新，不存在则新建。",
+        "operationId": "upsertUserProfile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertUserProfileRequest"
+              },
+              "example": {
+                "gender": "male",
+                "age": 22,
+                "height_cm": 178.5,
+                "weight_kg": 75.0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "画像保存成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpsertUserProfileResponse"
+                },
+                "example": {
+                  "message": "画像保存成功",
+                  "updated_at": "2026-03-27T10:05:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "除 /ping、/hardware/telemetry、/auth/register、/auth/login 外，其余接口默认需要 Bearer Token。"
+      }
+    },
+    "schemas": {
+      "PingResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "pong"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-14T09:10:37Z"
+          }
+        },
+        "required": [
+          "message",
+          "timestamp"
+        ]
+      },
+      "GridWeights": {
+        "type": "object",
+        "properties": {
+          "grid_1": {
+            "type": "number"
+          },
+          "grid_2": {
+            "type": "number"
+          },
+          "grid_3": {
+            "type": "number"
+          },
+          "grid_4": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "grid_1",
+          "grid_2",
+          "grid_3",
+          "grid_4"
+        ]
+      },
+      "TelemetryRequest": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "weights": {
+            "$ref": "#/components/schemas/GridWeights"
+          }
+        },
+        "required": [
+          "device_id",
+          "timestamp",
+          "weights"
+        ]
+      },
+      "TelemetryResponse": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "previous_state": {
+            "type": "string"
+          },
+          "current_state": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "device_id",
+          "previous_state",
+          "current_state",
+          "timestamp"
+        ]
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "message"
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "user_id",
+          "username"
+        ]
+      },
+      "BindDeviceRequest": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_id"
+        ]
+      },
+      "BindDeviceResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "device_id"
+        ]
+      },
+      "DevicesListResponse": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "devices"
+        ]
+      },
+      "UnbindDeviceResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "device_id"
+        ]
+      },
+      "MealFoodsUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "grids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MealFoodGridInput"
+            }
+          }
+        },
+        "required": [
+          "grids"
+        ]
+      },
+      "MealFoodGridInput": {
+        "type": "object",
+        "properties": {
+          "grid_index": {
+            "type": "integer"
+          },
+          "food_name": {
+            "type": "string"
+          },
+          "unit_cal_per_100g": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "grid_index",
+          "food_name",
+          "unit_cal_per_100g"
+        ]
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "MealsListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MealSummary"
+            }
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ]
+      },
+      "MealSummary": {
+        "type": "object",
+        "properties": {
+          "meal_id": {
+            "type": "string"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duration_minutes": {
+            "type": "integer"
+          },
+          "total_meal_cal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "meal_id",
+          "start_time",
+          "duration_minutes",
+          "total_meal_cal"
+        ]
+      },
+      "MealDetailResponse": {
+        "type": "object",
+        "properties": {
+          "meal_id": {
+            "type": "string"
+          },
+          "grid_details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MealGridDetail"
+            }
+          }
+        },
+        "required": [
+          "meal_id",
+          "grid_details"
+        ]
+      },
+      "MealGridDetail": {
+        "type": "object",
+        "properties": {
+          "grid_index": {
+            "type": "integer"
+          },
+          "food_name": {
+            "type": "string"
+          },
+          "served_g": {
+            "type": "number"
+          },
+          "intake_g": {
+            "type": "number"
+          },
+          "total_cal": {
+            "type": "number"
+          },
+          "speed_g_per_min": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "grid_index",
+          "food_name",
+          "served_g",
+          "intake_g",
+          "total_cal",
+          "speed_g_per_min"
+        ]
+      },
+      "MealTrajectoryResponse": {
+        "type": "object",
+        "properties": {
+          "meal_id": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MealTrajectoryItem"
+            }
+          },
+          "last_timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "meal_id",
+          "items",
+          "last_timestamp"
+        ]
+      },
+      "MealTrajectoryItem": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "weights": {
+            "$ref": "#/components/schemas/GridWeights"
+          }
+        },
+        "required": [
+          "timestamp",
+          "weights"
+        ]
+      },
+      "StatisticsChartsResponse": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "date_range": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "chart_data": {
+            "$ref": "#/components/schemas/StatisticsChartData"
+          }
+        },
+        "required": [
+          "user_id",
+          "date_range",
+          "chart_data"
+        ]
+      },
+      "StatisticsChartData": {
+        "type": "object",
+        "properties": {
+          "dates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "daily_served_g": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "daily_intake_g": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "daily_calories": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "avg_speed_g_per_min": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "dates",
+          "daily_served_g",
+          "daily_intake_g",
+          "daily_calories",
+          "avg_speed_g_per_min"
+        ]
+      },
+      "AiAdviceType": {
+        "type": "string",
+        "enum": [
+          "meal_review",
+          "daily_alert",
+          "next_meal"
+        ]
+      },
+      "AiAdviceResponse": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/AiAdviceType"
+          },
+          "advice": {
+            "type": "string"
+          },
+          "is_alert": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "advice",
+          "is_alert"
+        ]
+      },
+      "CreateCommunityRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ]
+      },
+      "CreateCommunityResponse": {
+        "type": "object",
+        "properties": {
+          "community_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "community_id",
+          "message"
+        ]
+      },
+      "JoinCommunityResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "CommunitiesListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommunityItem"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CommunityItem": {
+        "type": "object",
+        "properties": {
+          "community_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "member_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "community_id",
+          "name",
+          "description",
+          "member_count"
+        ]
+      },
+      "CommunityDashboardResponse": {
+        "type": "object",
+        "properties": {
+          "community_id": {
+            "type": "string"
+          },
+          "community_name": {
+            "type": "string"
+          },
+          "member_count": {
+            "type": "integer"
+          },
+          "food_avg_stats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommunityFoodAvgStat"
+            }
+          }
+        },
+        "required": [
+          "community_id",
+          "community_name",
+          "member_count",
+          "food_avg_stats"
+        ]
+      },
+      "CommunityFoodAvgStat": {
+        "type": "object",
+        "properties": {
+          "food_name": {
+            "type": "string"
+          },
+          "avg_served_g": {
+            "type": "number"
+          },
+          "avg_intake_g": {
+            "type": "number"
+          },
+          "avg_speed_g_per_min": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "food_name",
+          "avg_served_g",
+          "avg_intake_g",
+          "avg_speed_g_per_min"
+        ]
+      },
+      "Gender": {
+        "type": "string",
+        "enum": [
+          "male",
+          "female",
+          "other"
+        ]
+      },
+      "UserProfileResponse": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "gender": {
+            "$ref": "#/components/schemas/Gender"
+          },
+          "age": {
+            "type": "integer"
+          },
+          "height_cm": {
+            "type": "number"
+          },
+          "weight_kg": {
+            "type": "number"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "user_id",
+          "gender",
+          "age",
+          "height_cm",
+          "weight_kg",
+          "updated_at"
+        ]
+      },
+      "ProfileNotFoundResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "const": "profile_not_found"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
+      },
+      "UpsertUserProfileRequest": {
+        "type": "object",
+        "properties": {
+          "gender": {
+            "$ref": "#/components/schemas/Gender"
+          },
+          "age": {
+            "type": "integer"
+          },
+          "height_cm": {
+            "type": "number"
+          },
+          "weight_kg": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "gender",
+          "age",
+          "height_cm",
+          "weight_kg"
+        ]
+      },
+      "UpsertUserProfileResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "message",
+          "updated_at"
+        ]
+      }
+    }
+  }
+}
