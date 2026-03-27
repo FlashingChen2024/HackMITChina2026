@@ -1,13 +1,8 @@
-/**
- * v4.0 用餐记录 API（智能餐盒数据，鉴权后按当前用户过滤）
- */
-
-import { get } from './client';
+﻿import { get, put } from './client';
 
 /**
- * 历史用餐列表（游标分页）
- * @param {{ cursor?: string, limit?: number }}
- * @returns {Promise<{ items: Array<{ meal_id, start_time, duration_minutes, total_meal_cal }>, next_cursor: string }>}
+ * History meals list (cursor pagination).
+ * GET /meals
  */
 export function fetchMeals({ cursor, limit } = {}) {
   const params = new URLSearchParams();
@@ -18,15 +13,29 @@ export function fetchMeals({ cursor, limit } = {}) {
 }
 
 /**
- * 获取就餐时序轨迹（降采样支持）
- * @param {string} mealId - 用餐ID
- * @param {{ lastTimestamp?: string, sampleInterval?: number }}
- * @returns {Promise<{ meal_id: string, items: Array<{ timestamp: string, weights: object }>, last_timestamp: string }>}
+ * Single meal detail.
+ * GET /meals/{meal_id}
+ */
+export function fetchMealDetail(mealId) {
+  return get(`/api/v1/meals/${encodeURIComponent(mealId)}`);
+}
+
+/**
+ * Attach foods to grids for a meal.
+ * PUT /meals/{meal_id}/foods
+ */
+export function updateMealFoods(mealId, grids) {
+  return put(`/api/v1/meals/${encodeURIComponent(mealId)}/foods`, { grids });
+}
+
+/**
+ * Meal trajectory (supports incremental query and downsampling).
+ * GET /meals/{meal_id}/trajectory
  */
 export function fetchMealTrajectory(mealId, { lastTimestamp, sampleInterval } = {}) {
   const params = new URLSearchParams();
   if (lastTimestamp) params.set('last_timestamp', lastTimestamp);
   if (sampleInterval != null) params.set('sample_interval', String(sampleInterval));
   const q = params.toString() ? `?${params}` : '';
-  return get(`/api/v1/meals/${mealId}/trajectory${q}`);
+  return get(`/api/v1/meals/${encodeURIComponent(mealId)}/trajectory${q}`);
 }

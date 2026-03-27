@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Container,
   Box,
@@ -44,43 +44,42 @@ export default function Community() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
 
-  // 创建社区
+  // 鍒涘缓绀惧尯
   const [createForm, setCreateForm] = useState({ name: '', description: '' });
   const [createdCommunityId, setCreatedCommunityId] = useState(null);
 
-  // 加入社区
+  // 鍔犲叆绀惧尯
   const [joinForm, setJoinForm] = useState({ communityId: '' });
   const [joinedCommunity, setJoinedCommunity] = useState(null);
 
-  // 仪表板数据
-  const [dashboardData, setDashboardData] = useState(null);
+  // 浠〃鏉挎暟鎹?  const [dashboardData, setDashboardData] = useState(null);
   const [dashboardCommunityId, setDashboardCommunityId] = useState('');
 
-  // 创建社区处理
+  // 鍒涘缓绀惧尯澶勭悊
   const handleCreateCommunity = async () => {
     if (!createForm.name.trim()) {
-      setError('社区名称不能为空');
+      setError('绀惧尯鍚嶇О涓嶈兘涓虹┖');
       return;
     }
     setLoading(true);
     setError(null);
     setMessage(null);
     try {
-      const res = await createCommunity(createForm.name, createForm.description);
+      const res = await createCommunity({ name: createForm.name, description: createForm.description });
       setCreatedCommunityId(res.community_id);
-      setMessage(`✓ ${res.message} (ID: ${res.community_id})`);
+      setMessage(`鉁?${res.message} (ID: ${res.community_id})`);
       setCreateForm({ name: '', description: '' });
     } catch (err) {
-      setError(err.message || '创建社区失败');
+      setError(err.message || '鍒涘缓绀惧尯澶辫触');
     } finally {
       setLoading(false);
     }
   };
 
-  // 加入社区处理
+  // 鍔犲叆绀惧尯澶勭悊
   const handleJoinCommunity = async () => {
     if (!joinForm.communityId.trim()) {
-      setError('社区ID不能为空');
+      setError('绀惧尯ID涓嶈兘涓虹┖');
       return;
     }
     setLoading(true);
@@ -89,19 +88,18 @@ export default function Community() {
     try {
       const res = await joinCommunity(joinForm.communityId);
       setJoinedCommunity(joinForm.communityId);
-      setMessage(`✓ ${res.message}`);
+      setMessage(`鉁?${res.message}`);
       setJoinForm({ communityId: '' });
     } catch (err) {
-      setError(err.message || '加入社区失败');
+      setError(err.message || '鍔犲叆绀惧尯澶辫触');
     } finally {
       setLoading(false);
     }
   };
 
-  // 获取仪表板数据
-  const handleFetchDashboard = async () => {
+  // 鑾峰彇浠〃鏉挎暟鎹?  const handleFetchDashboard = async () => {
     if (!dashboardCommunityId.trim()) {
-      setError('社区ID不能为空');
+      setError('绀惧尯ID涓嶈兘涓虹┖');
       return;
     }
     setLoading(true);
@@ -110,9 +108,9 @@ export default function Community() {
     try {
       const res = await fetchCommunityDashboard(dashboardCommunityId);
       setDashboardData(res);
-      setMessage(`✓ 已加载社区「${res.community_name}」的数据`);
+      setMessage(`鉁?宸插姞杞界ぞ鍖恒€?{res.community_name}銆嶇殑鏁版嵁`);
     } catch (err) {
-      setError(err.message || '获取仪表板数据失败');
+      setError(err.message || '鑾峰彇浠〃鏉挎暟鎹け璐?);
     } finally {
       setLoading(false);
     }
@@ -124,7 +122,7 @@ export default function Community() {
         <Card>
           <CardContent>
             <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
-              👥 社区共享
+              馃懃 绀惧尯鍏变韩
             </Typography>
 
             {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
@@ -135,13 +133,13 @@ export default function Community() {
               onChange={(e, newValue) => setActiveTab(newValue)}
               sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
             >
-              <Tab label="📋 菜单" id="tab-0" aria-controls="tabpanel-0" />
-              <Tab label="➕ 创建社区" id="tab-1" aria-controls="tabpanel-1" />
-              <Tab label="🔗 加入社区" id="tab-2" aria-controls="tabpanel-2" />
-              <Tab label="📊 仪表板" id="tab-3" aria-controls="tabpanel-3" />
+              <Tab label="馃搵 鑿滃崟" id="tab-0" aria-controls="tabpanel-0" />
+              <Tab label="鉃?鍒涘缓绀惧尯" id="tab-1" aria-controls="tabpanel-1" />
+              <Tab label="馃敆 鍔犲叆绀惧尯" id="tab-2" aria-controls="tabpanel-2" />
+              <Tab label="馃搳 浠〃鏉? id="tab-3" aria-controls="tabpanel-3" />
             </Tabs>
 
-            {/* 菜单选项卡 */}
+            {/* 鑿滃崟閫夐」鍗?*/}
             <TabPanel value={activeTab} index={0}>
               <Grid container spacing={3}>
                 <Grid item xs={12} sm={6}>
@@ -159,11 +157,10 @@ export default function Community() {
                     onClick={() => setActiveTab(1)}
                   >
                     <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                      📝 创建社区
+                      馃摑 鍒涘缓绀惧尯
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
-                      创建一个新的社区，邀请其他用户加入
-                    </Typography>
+                      鍒涘缓涓€涓柊鐨勭ぞ鍖猴紝閭€璇峰叾浠栫敤鎴峰姞鍏?                    </Typography>
                   </Paper>
                 </Grid>
 
@@ -182,11 +179,10 @@ export default function Community() {
                     onClick={() => setActiveTab(2)}
                   >
                     <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                      🚀 加入社区
+                      馃殌 鍔犲叆绀惧尯
                     </Typography>
                     <Typography variant="body2" color="textSecondary">
-                      使用社区ID加入已有的社区
-                    </Typography>
+                      浣跨敤绀惧尯ID鍔犲叆宸叉湁鐨勭ぞ鍖?                    </Typography>
                   </Paper>
                 </Grid>
 
@@ -205,24 +201,22 @@ export default function Community() {
                     onClick={() => setActiveTab(3)}
                   >
                     <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                      📊 查看仪表板
-                    </Typography>
+                      馃搳 鏌ョ湅浠〃鏉?                    </Typography>
                     <Typography variant="body2" color="textSecondary">
-                      查看社区聚合看板 - 所有菜品的打饭量、剩余量、摄入量和用餐速度的平均值
-                    </Typography>
+                      鏌ョ湅绀惧尯鑱氬悎鐪嬫澘 - 鎵€鏈夎彍鍝佺殑鎵撻キ閲忋€佸墿浣欓噺銆佹憚鍏ラ噺鍜岀敤椁愰€熷害鐨勫钩鍧囧€?                    </Typography>
                   </Paper>
                 </Grid>
               </Grid>
             </TabPanel>
 
-            {/* 创建社区选项卡 */}
+            {/* 鍒涘缓绀惧尯閫夐」鍗?*/}
             <TabPanel value={activeTab} index={1}>
               <Grid container spacing={2} sx={{ maxWidth: 500 }}>
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="社区名称 *"
-                    placeholder="如：MIT 黑客松健康营"
+                    label="绀惧尯鍚嶇О *"
+                    placeholder="濡傦細MIT 榛戝鏉惧仴搴疯惀"
                     value={createForm.name}
                     onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                   />
@@ -230,8 +224,8 @@ export default function Community() {
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="社区描述"
-                    placeholder="输入社区描述（可选）"
+                    label="绀惧尯鎻忚堪"
+                    placeholder="杈撳叆绀惧尯鎻忚堪锛堝彲閫夛級"
                     multiline
                     rows={4}
                     value={createForm.description}
@@ -246,35 +240,34 @@ export default function Community() {
                     onClick={handleCreateCommunity}
                     disabled={loading}
                   >
-                    {loading ? '创建中...' : '创建社区'}
+                    {loading ? '鍒涘缓涓?..' : '鍒涘缓绀惧尯'}
                   </Button>
                 </Grid>
                 {createdCommunityId && (
                   <Grid item xs={12}>
                     <Paper sx={{ p: 2, backgroundColor: '#e8f5e9', border: '1px solid #4caf50' }}>
                       <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                        ✅ 社区创建成功
+                        鉁?绀惧尯鍒涘缓鎴愬姛
                       </Typography>
                       <Box sx={{ p: 1, backgroundColor: '#fff', borderRadius: 1, fontFamily: 'monospace', mb: 1 }}>
                         {createdCommunityId}
                       </Box>
                       <Typography variant="caption" color="textSecondary">
-                        社区ID已复制，请妥善保管并分享给其他用户以邀请他们加入
-                      </Typography>
+                        绀惧尯ID宸插鍒讹紝璇峰Ε鍠勪繚绠″苟鍒嗕韩缁欏叾浠栫敤鎴蜂互閭€璇蜂粬浠姞鍏?                      </Typography>
                     </Paper>
                   </Grid>
                 )}
               </Grid>
             </TabPanel>
 
-            {/* 加入社区选项卡 */}
+            {/* 鍔犲叆绀惧尯閫夐」鍗?*/}
             <TabPanel value={activeTab} index={2}>
               <Grid container spacing={2} sx={{ maxWidth: 500 }}>
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="社区ID *"
-                    placeholder="输入要加入的社区ID"
+                    label="绀惧尯ID *"
+                    placeholder="杈撳叆瑕佸姞鍏ョ殑绀惧尯ID"
                     value={joinForm.communityId}
                     onChange={(e) => setJoinForm({ ...joinForm, communityId: e.target.value })}
                   />
@@ -287,14 +280,14 @@ export default function Community() {
                     onClick={handleJoinCommunity}
                     disabled={loading}
                   >
-                    {loading ? '加入中...' : '加入社区'}
+                    {loading ? '鍔犲叆涓?..' : '鍔犲叆绀惧尯'}
                   </Button>
                 </Grid>
                 {joinedCommunity && (
                   <Grid item xs={12}>
                     <Paper sx={{ p: 2, backgroundColor: '#e3f2fd', border: '1px solid #2196f3' }}>
                       <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                        ✅ 成功加入社区
+                        鉁?鎴愬姛鍔犲叆绀惧尯
                       </Typography>
                       <Box sx={{ p: 1, backgroundColor: '#fff', borderRadius: 1, fontFamily: 'monospace' }}>
                         {joinedCommunity}
@@ -305,14 +298,14 @@ export default function Community() {
               </Grid>
             </TabPanel>
 
-            {/* 仪表板选项卡 */}
+            {/* 浠〃鏉块€夐」鍗?*/}
             <TabPanel value={activeTab} index={3}>
               <Grid container spacing={2} sx={{ maxWidth: 500, mb: 3 }}>
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
-                    label="社区ID *"
-                    placeholder="输入社区ID"
+                    label="绀惧尯ID *"
+                    placeholder="杈撳叆绀惧尯ID"
                     value={dashboardCommunityId}
                     onChange={(e) => setDashboardCommunityId(e.target.value)}
                   />
@@ -325,7 +318,7 @@ export default function Community() {
                     onClick={handleFetchDashboard}
                     disabled={loading}
                   >
-                    {loading ? '加载中...' : '加载仪表板'}
+                    {loading ? '鍔犺浇涓?..' : '鍔犺浇浠〃鏉?}
                   </Button>
                 </Grid>
               </Grid>
@@ -341,15 +334,14 @@ export default function Community() {
                       {dashboardData.community_name}
                     </Typography>
                     <Chip
-                      label={`👥 ${dashboardData.member_count} 位成员`}
+                      label={`馃懃 ${dashboardData.member_count} 浣嶆垚鍛榒}
                       color="primary"
                       sx={{ mt: 1 }}
                     />
                   </Paper>
 
                   <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
-                    菜品统计平均值
-                  </Typography>
+                    鑿滃搧缁熻骞冲潎鍊?                  </Typography>
 
                   {dashboardData.food_avg_stats && dashboardData.food_avg_stats.length > 0 ? (
                     <Grid container spacing={2}>
@@ -362,8 +354,7 @@ export default function Community() {
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="caption" color="textSecondary">
-                                  📤 打饭量
-                                </Typography>
+                                  馃摛 鎵撻キ閲?                                </Typography>
                                 <Chip
                                   label={`${food.avg_served_g.toFixed(1)}g`}
                                   size="small"
@@ -372,10 +363,9 @@ export default function Community() {
                               </Box>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="caption" color="textSecondary">
-                                  🗑️ 剩余量
-                                </Typography>
+                                  馃棏锔?鍓╀綑閲?                                </Typography>
                                 <Chip
-                                  label={`${food.avg_leftover_g.toFixed(1)}g`}
+                                  label={`${(food.avg_leftover_g ?? Math.max(Number(food.avg_served_g || 0) - Number(food.avg_intake_g || 0), 0)).toFixed(1)}g`}
                                   size="small"
                                   variant="outlined"
                                   color="error"
@@ -383,8 +373,7 @@ export default function Community() {
                               </Box>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="caption" color="textSecondary">
-                                  🥄 摄入量
-                                </Typography>
+                                  馃 鎽勫叆閲?                                </Typography>
                                 <Chip
                                   label={`${food.avg_intake_g.toFixed(1)}g`}
                                   size="small"
@@ -394,7 +383,7 @@ export default function Community() {
                               </Box>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="caption" color="textSecondary">
-                                  ⚡ 用餐速度
+                                  鈿?鐢ㄩ閫熷害
                                 </Typography>
                                 <Chip
                                   label={`${food.avg_speed_g_per_min.toFixed(1)}g/min`}
@@ -408,7 +397,7 @@ export default function Community() {
                       ))}
                     </Grid>
                   ) : (
-                    <Alert severity="info">暂无菜品数据</Alert>
+                    <Alert severity="info">鏆傛棤鑿滃搧鏁版嵁</Alert>
                   )}
                 </Box>
               ) : null}
