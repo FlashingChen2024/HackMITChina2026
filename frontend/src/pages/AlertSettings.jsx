@@ -466,6 +466,10 @@ export default function AlertSettings() {
   };
 
   const cardShadow = '0 2px 8px rgba(0, 0, 0, 0.04)';
+  /**
+   * 预警指标 / 通知联系人主卡片圆角，与主题 `MuiCard`（20px）及顶栏一致，避免 `borderRadius: 3` 随 `shape` 倍乘过圆。
+   */
+  const alertCardRadius = '20px';
   const headerGradient = 'linear-gradient(135deg, #00BFA5 0%, #008573 100%)';
   const btnGradient = 'linear-gradient(135deg, #00BFA5 0%, #008573 100%)';
   const btnGradientHover = 'linear-gradient(135deg, #008573 0%, #006B5C 100%)';
@@ -488,7 +492,7 @@ export default function AlertSettings() {
           <Card
             sx={{
               overflow: 'visible',
-              borderRadius: 3,
+              borderRadius: alertCardRadius,
               boxShadow: cardShadow,
               transition: 'transform 0.2s, box-shadow 0.2s',
               '&:hover': { boxShadow: '0 8px 24px rgba(0, 191, 165, 0.12)' },
@@ -499,8 +503,8 @@ export default function AlertSettings() {
                 p: 3,
                 background: headerGradient,
                 color: 'white',
-                borderTopLeftRadius: 12,
-                borderTopRightRadius: 12,
+                borderTopLeftRadius: alertCardRadius,
+                borderTopRightRadius: alertCardRadius,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
@@ -670,7 +674,8 @@ export default function AlertSettings() {
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
-              borderRadius: 3,
+              overflow: 'visible',
+              borderRadius: alertCardRadius,
               boxShadow: cardShadow,
               transition: 'transform 0.2s, box-shadow 0.2s',
               '&:hover': { boxShadow: '0 8px 24px rgba(0, 191, 165, 0.1)' },
@@ -681,8 +686,8 @@ export default function AlertSettings() {
                 p: 3,
                 background: headerGradient,
                 color: 'white',
-                borderTopLeftRadius: 12,
-                borderTopRightRadius: 12,
+                borderTopLeftRadius: alertCardRadius,
+                borderTopRightRadius: alertCardRadius,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,
