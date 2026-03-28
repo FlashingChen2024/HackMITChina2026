@@ -407,7 +407,7 @@ export default function Meals() {
             菜品视觉识别与卡路里点火
           </Typography>
           <Typography variant="body2" sx={{ mb: 2, color: '#64748B' }}>
-            流程对齐 API v4.4：按格口拍照后可点「AI 识菜」走 §9.1→§9.2 回填食物库编码，再点「视觉确认挂载」调用 §9.3；或直接手填名称与热量，使用「手动卡路里点火」调用 §4.1。
+            流程对齐 API v4.4：按格口拍照后可点「AI 识菜」走 9.1 -> 9.2 回填食物库编码，再点「视觉确认挂载」调用 9.3；或直接手填名称与热量，使用「手动卡路里点火」调用 4.1。
           </Typography>
 
           <Stack spacing={2}>
@@ -563,7 +563,7 @@ export default function Meals() {
                           label="食物库编码 (food_code)"
                           value={grid.food_code}
                           onChange={(e) => updateGridInput(grid.grid_index, 'food_code', e.target.value)}
-                          placeholder="识菜后自动填入，§9.3 必填"
+                          placeholder="识菜后自动填入，9.3 必填"
                           helperText="用于 POST /meals/{meal_id}/vision-confirm"
                         />
                       </Stack>
@@ -581,7 +581,7 @@ export default function Meals() {
                 onClick={submitVisionConfirm}
                 disabled={submitLoading || visionBusy}
               >
-                {submitLoading ? '提交中...' : '视觉确认挂载 (§9.3)'}
+                {submitLoading ? '提交中...' : '视觉确认挂载 (9.3)'}
               </Button>
               <Button
                 variant="contained"
@@ -589,7 +589,7 @@ export default function Meals() {
                 onClick={submitManualFoods}
                 disabled={submitLoading || visionBusy}
               >
-                {submitLoading ? '提交中...' : '手动卡路里点火 (§4.1)'}
+                {submitLoading ? '提交中...' : '手动卡路里点火 (4.1)'}
               </Button>
               <Button
                 variant="text"
