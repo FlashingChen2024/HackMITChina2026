@@ -1,24 +1,55 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Card, CardContent, Typography, Button, Alert, CircularProgress, Box, Chip, Grid,
-  Avatar, Divider, IconButton, Tooltip
+  Avatar, Divider, IconButton, Tooltip, TextField, Stack, MenuItem
 } from '@mui/material';
 import { 
   Refresh as RefreshIcon, 
   Restaurant as MealIcon,
   Timer as TimerIcon,
   LocalFireDepartment as CalorieIcon,
-  AccessTime as TimeIcon
+  AccessTime as TimeIcon,
+  PhotoCamera as CameraIcon,
+  StopCircle as StopCameraIcon,
+  Send as SendIcon,
+  AutoAwesome as AiVisionIcon,
 } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
-import { fetchMeals } from '../api/meals';
+import { fetchMeals, updateMealFoods, confirmMealVision } from '../api/meals';
+import { analyzeVision } from '../api/vision';
+import { searchFoodLibrary } from '../api/foodLibrary';
+import { compressDataUrlForVision } from '../utils/imageCompress';
 
 export default function Meals() {
   const currentUser = getCurrentUser();
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
   const [items, setItems] = useState([]);
   const [nextCursor, setNextCursor] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [cameraError, setCameraError] = useState('');
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [activeCaptureGrid, setActiveCaptureGrid] = useState(1);
+  const [autoAdvanceCapture, setAutoAdvanceCapture] = useState(true);
+  const [gridSnapshots, setGridSnapshots] = useState({
+    1: '',
+    2: '',
+    3: '',
+    4: '',
+  });
+  const [selectedMealId, setSelectedMealId] = useState('');
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [visionBusy, setVisionBusy] = useState(false);
+  const [submitResult, setSubmitResult] = useState('');
+  const [gridInputs, setGridInputs] = useState([
+    { grid_index: 1, food_name: '', unit_cal_per_100g: '', food_code: '' },
+    { grid_index: 2, food_name: '', unit_cal_per_100g: '', food_code: '' },
+    { grid_index: 3, food_name: '', unit_cal_per_100g: '', food_code: '' },
+    { grid_index: 4, food_name: '', unit_cal_per_100g: '', food_code: '' },
+  ]);
 
   const load = async (cursor = '') => {
     setLoading(true);
@@ -45,6 +76,23 @@ export default function Meals() {
     load();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cameraOpen || !videoRef.current || !streamRef.current) return;
+    videoRef.current.srcObject = streamRef.current;
+    videoRef.current.play().catch(() => {
+      setCameraError('摄像头已连接，但自动播放失败，请重试打开摄像头');
+    });
+  }, [cameraOpen]);
+
   const formatDate = (isoString) => {
     if (!isoString) return '未知时间';
     const date = new Date(isoString);
@@ -53,8 +101,418 @@ export default function Meals() {
     }).format(date);
   };
 
+  const mealOptions = useMemo(() => items.map((m) => ({
+    mealId: m.meal_id,
+    label: `${formatDate(m.start_time)} (${m.meal_id})`,
+  })), [items]);
+
+  /**
+   * 打开摄像头流并渲染到视频组件。
+   * @returns {Promise<void>}
+   */
+  const startCamera = async () => {
+    setCameraError('');
+    setSubmitResult('');
+    setCameraReady(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraOpen(true);
+    } catch (e) {
+      setCameraError(e.message || '无法访问摄像头');
+    }
+  };
+
+  /**
+   * 停止摄像头采集并释放轨道资源。
+   * @returns {void}
+   */
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraOpen(false);
+    setCameraReady(false);
+  };
+
+  /**
+   * 将当前视频帧截图为 base64，用于用户确认识别内容。
+   * @returns {void}
+   */
+  const captureSnapshot = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    if (video.readyState < 2 || !cameraReady) {
+      setCameraError('摄像头还在初始化，请等待画面出现后再拍照');
+      return;
+    }
+    const canvas = canvasRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      setCameraError('摄像头画面不可用，请重新打开摄像头后重试');
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    setCameraError('');
+    const snapshot = canvas.toDataURL('image/jpeg', 0.9);
+    setGridSnapshots((prev) => ({
+      ...prev,
+      [activeCaptureGrid]: snapshot,
+    }));
+    if (autoAdvanceCapture) {
+      setActiveCaptureGrid((prev) => (prev === 4 ? 1 : prev + 1));
+    }
+  };
+
+  /**
+   * 更新某个格口的食物名称、热量或食物库编码。
+   * @param {number} gridIndex
+   * @param {'food_name' | 'unit_cal_per_100g' | 'food_code'} key
+   * @param {string} value
+   * @returns {void}
+   */
+  const updateGridInput = (gridIndex, key, value) => {
+    setGridInputs((prev) => prev.map((grid) => {
+      if (grid.grid_index !== gridIndex) return grid;
+      return { ...grid, [key]: value };
+    }));
+  };
+
+  /**
+   * 单格：压缩图 → §9.1 识菜 → §9.2 食物库，回填名称/热量/food_code。
+   * @param {number} gridIndex
+   * @returns {Promise<void>}
+   */
+  const recognizeGrid = async (gridIndex) => {
+    setCameraError('');
+    setSubmitResult('');
+    setError(null);
+    const snap = gridSnapshots[gridIndex];
+    if (!snap) {
+      setCameraError(`请先拍摄格口 ${gridIndex} 照片`);
+      return;
+    }
+    setVisionBusy(true);
+    try {
+      const { image_base64, compress_size_kb } = await compressDataUrlForVision(snap);
+      const vision = await analyzeVision({ image_base64, compress_size_kb });
+      const kw = (vision.keywords_cn && vision.keywords_cn[0])
+        || (vision.keywords_en && vision.keywords_en[0]);
+      if (!kw) {
+        setCameraError('未能识别菜品关键词，请手动填写');
+        return;
+      }
+      const lib = await searchFoodLibrary(kw);
+      const match = lib.matches && lib.matches[0];
+      if (!match) {
+        setCameraError(`食物库暂无「${kw}」匹配，请手动填写或换关键词搜索`);
+        return;
+      }
+      updateGridInput(gridIndex, 'food_name', match.food_name_cn);
+      updateGridInput(gridIndex, 'unit_cal_per_100g', String(match.default_unit_cal_per_100g));
+      updateGridInput(gridIndex, 'food_code', match.food_code);
+      setSubmitResult(`格口 ${gridIndex} 已匹配：${match.food_name_cn}（${match.food_code}）`);
+    } catch (e) {
+      setError(e.message || '识菜失败');
+    } finally {
+      setVisionBusy(false);
+    }
+  };
+
+  /**
+   * §9.3 视觉确认挂载（仅 food_code）。
+   * @returns {Promise<void>}
+   */
+  const submitVisionConfirm = async () => {
+    setSubmitResult('');
+    setError(null);
+    if (!selectedMealId) {
+      setError('请先选择要挂载食物信息的餐次');
+      return;
+    }
+    const visionGrids = gridInputs
+      .filter((g) => String(g.food_code).trim() !== '')
+      .map((g) => ({
+        grid_index: g.grid_index,
+        food_code: String(g.food_code).trim(),
+      }));
+    if (visionGrids.length === 0) {
+      setError('请至少一个格口完成识菜并产生食物编码，或使用下方「手动卡路里点火」');
+      return;
+    }
+    setSubmitLoading(true);
+    try {
+      const res = await confirmMealVision(selectedMealId, visionGrids);
+      setSubmitResult(res.message || '视觉识别确认成功，卡路里已就绪');
+      await load();
+    } catch (e) {
+      setError(e.message || '视觉确认失败');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  /**
+   * §4.1 手动挂载：食物名 + 每 100g 卡路里（不向接口发送 photo / food_code）。
+   * @returns {Promise<void>}
+   */
+  const submitManualFoods = async () => {
+    setSubmitResult('');
+    setError(null);
+    const selected = gridInputs
+      .filter((grid) => grid.food_name.trim() !== '' && grid.unit_cal_per_100g !== '')
+      .map((grid) => ({
+        grid_index: grid.grid_index,
+        food_name: grid.food_name.trim(),
+        unit_cal_per_100g: Number(grid.unit_cal_per_100g),
+      }));
+
+    if (!selectedMealId) {
+      setError('请先选择要挂载食物信息的餐次');
+      return;
+    }
+    if (selected.length === 0) {
+      setError('请至少填写一个格口的食物名称和单位卡路里');
+      return;
+    }
+    if (selected.some((item) => Number.isNaN(item.unit_cal_per_100g) || item.unit_cal_per_100g < 0)) {
+      setError('单位卡路里必须是大于等于 0 的数字');
+      return;
+    }
+
+    setSubmitLoading(true);
+    try {
+      const res = await updateMealFoods(selectedMealId, selected);
+      setSubmitResult(res.message || '食物信息挂载成功，卡路里已就绪');
+      await load();
+    } catch (e) {
+      setError(e.message || '提交失败');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ pb: 4, maxWidth: 1000, mx: 'auto' }}>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
+            菜品视觉识别与卡路里点火
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2, color: '#64748B' }}>
+            流程对齐 API v4.4：按格口拍照后可点「AI 识菜」走 §9.1→§9.2 回填食物库编码，再点「视觉确认挂载」调用 §9.3；或直接手填名称与热量，使用「手动卡路里点火」调用 §4.1。
+          </Typography>
+
+          <Stack spacing={2}>
+            <TextField
+              select
+              size="small"
+              label="目标餐次"
+              value={selectedMealId}
+              onChange={(e) => setSelectedMealId(e.target.value)}
+              helperText="选择要挂载 /meals/{meal_id}/foods 的餐次"
+            >
+              {mealOptions.map((option) => (
+                <MenuItem key={option.mealId} value={option.mealId}>{option.label}</MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              size="small"
+              label="当前拍照格口"
+              value={activeCaptureGrid}
+              onChange={(e) => setActiveCaptureGrid(Number(e.target.value))}
+              helperText="建议按格口 1~4 依次拍照"
+            >
+              <MenuItem value={1}>格口 1</MenuItem>
+              <MenuItem value={2}>格口 2</MenuItem>
+              <MenuItem value={3}>格口 3</MenuItem>
+              <MenuItem value={4}>格口 4</MenuItem>
+            </TextField>
+
+            <TextField
+              select
+              size="small"
+              label="拍照模式"
+              value={autoAdvanceCapture ? 'auto' : 'manual'}
+              onChange={(e) => setAutoAdvanceCapture(e.target.value === 'auto')}
+              helperText="连拍模式会在每次拍照后自动切换到下一个格口"
+            >
+              <MenuItem value="auto">连拍模式（自动跳格口）</MenuItem>
+              <MenuItem value="manual">手动模式（不自动跳）</MenuItem>
+            </TextField>
+
+            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+              {!cameraOpen ? (
+                <Button variant="contained" startIcon={<CameraIcon />} onClick={startCamera}>
+                  打开摄像头
+                </Button>
+              ) : (
+                <Button variant="outlined" color="error" startIcon={<StopCameraIcon />} onClick={stopCamera}>
+                  关闭摄像头
+                </Button>
+              )}
+              <Button variant="outlined" onClick={captureSnapshot} disabled={!cameraOpen || !cameraReady}>
+                拍摄格口 {activeCaptureGrid}
+              </Button>
+            </Box>
+
+            {cameraOpen && (
+              <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  onLoadedData={() => setCameraReady(true)}
+                  style={{ width: '100%', maxHeight: 360, objectFit: 'cover', display: 'block' }}
+                />
+              </Box>
+            )}
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+            <Grid container spacing={2}>
+              {[1, 2, 3, 4].map((gridIndex) => (
+                <Grid item xs={12} md={6} key={`snapshot-${gridIndex}`}>
+                  <Card variant="outlined" sx={{ borderColor: '#E2E8F0' }}>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>格口 {gridIndex} 照片</Typography>
+                      {gridSnapshots[gridIndex] ? (
+                        <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #E2E8F0', mb: 1 }}>
+                          <img
+                            src={gridSnapshots[gridIndex]}
+                            alt={`grid-${gridIndex}`}
+                            style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }}
+                          />
+                        </Box>
+                      ) : (
+                        <Box
+                          sx={{
+                            borderRadius: 2,
+                            border: '1px dashed #CBD5E1',
+                            color: '#94A3B8',
+                            textAlign: 'center',
+                            py: 4,
+                            mb: 1,
+                          }}
+                        >
+                          未拍照
+                        </Box>
+                      )}
+                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
+                        <Button
+                          size="small"
+                          variant={activeCaptureGrid === gridIndex ? 'contained' : 'outlined'}
+                          onClick={() => setActiveCaptureGrid(gridIndex)}
+                        >
+                          设为当前拍照格口
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="secondary"
+                          startIcon={<AiVisionIcon />}
+                          disabled={visionBusy || submitLoading || !gridSnapshots[gridIndex]}
+                          onClick={() => recognizeGrid(gridIndex)}
+                        >
+                          AI 识菜
+                        </Button>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Grid container spacing={2}>
+              {gridInputs.map((grid) => (
+                <Grid item xs={12} md={6} key={grid.grid_index}>
+                  <Card variant="outlined" sx={{ borderColor: '#E2E8F0' }}>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>格口 {grid.grid_index}</Typography>
+                      <Stack spacing={1.5}>
+                        <TextField
+                          size="small"
+                          label="食物名称"
+                          value={grid.food_name}
+                          onChange={(e) => updateGridInput(grid.grid_index, 'food_name', e.target.value)}
+                          placeholder="如：西红柿炒鸡蛋"
+                        />
+                        <TextField
+                          size="small"
+                          type="number"
+                          label="每100g卡路里"
+                          value={grid.unit_cal_per_100g}
+                          onChange={(e) => updateGridInput(grid.grid_index, 'unit_cal_per_100g', e.target.value)}
+                          inputProps={{ min: 0, step: '0.1' }}
+                          placeholder="如：80"
+                        />
+                        <TextField
+                          size="small"
+                          label="食物库编码 (food_code)"
+                          value={grid.food_code}
+                          onChange={(e) => updateGridInput(grid.grid_index, 'food_code', e.target.value)}
+                          placeholder="识菜后自动填入，§9.3 必填"
+                          helperText="用于 POST /meals/{meal_id}/vision-confirm"
+                        />
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                color="secondary"
+                startIcon={<AiVisionIcon />}
+                onClick={submitVisionConfirm}
+                disabled={submitLoading || visionBusy}
+              >
+                {submitLoading ? '提交中...' : '视觉确认挂载 (§9.3)'}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<SendIcon />}
+                onClick={submitManualFoods}
+                disabled={submitLoading || visionBusy}
+              >
+                {submitLoading ? '提交中...' : '手动卡路里点火 (§4.1)'}
+              </Button>
+              <Button
+                variant="text"
+                disabled={visionBusy}
+                onClick={() => {
+                  setGridInputs([
+                    { grid_index: 1, food_name: '', unit_cal_per_100g: '', food_code: '' },
+                    { grid_index: 2, food_name: '', unit_cal_per_100g: '', food_code: '' },
+                    { grid_index: 3, food_name: '', unit_cal_per_100g: '', food_code: '' },
+                    { grid_index: 4, food_name: '', unit_cal_per_100g: '', food_code: '' },
+                  ]);
+                  setGridSnapshots({ 1: '', 2: '', 3: '', 4: '' });
+                  setActiveCaptureGrid(1);
+                  setSubmitResult('');
+                }}
+              >
+                清空输入
+              </Button>
+            </Box>
+
+            {cameraError && <Alert severity="error">{cameraError}</Alert>}
+            {submitResult && <Alert severity="success">{submitResult}</Alert>}
+          </Stack>
+        </CardContent>
+      </Card>
+
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 4, gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>就餐记录</Typography>

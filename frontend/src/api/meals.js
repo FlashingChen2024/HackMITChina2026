@@ -1,4 +1,4 @@
-﻿import { get, put } from './client';
+import { get, put, post } from './client';
 
 /**
  * History meals list (cursor pagination).
@@ -21,11 +21,27 @@ export function fetchMealDetail(mealId) {
 }
 
 /**
- * Attach foods to grids for a meal.
- * PUT /meals/{meal_id}/foods
+ * 菜品挂载与卡路里点火（API v4.4 §4.1）。
+ * `PUT /api/v1/meals/{meal_id}/foods`，请求体仅包含规范内字段。
+ *
+ * @param {string} mealId 餐次 ID
+ * @param {{ grid_index: number, food_name: string, unit_cal_per_100g: number }[]} grids
+ * @returns {Promise<{ message?: string }>}
  */
 export function updateMealFoods(mealId, grids) {
   return put(`/api/v1/meals/${encodeURIComponent(mealId)}/foods`, { grids });
+}
+
+/**
+ * 视觉识别结果确认挂载（API v4.4 §9.3）。
+ * `POST /api/v1/meals/{meal_id}/vision-confirm`
+ *
+ * @param {string} mealId 餐次 ID
+ * @param {{ grid_index: number, food_code: string }[]} grids
+ * @returns {Promise<{ message?: string }>}
+ */
+export function confirmMealVision(mealId, grids) {
+  return post(`/api/v1/meals/${encodeURIComponent(mealId)}/vision-confirm`, { grids });
 }
 
 /**
