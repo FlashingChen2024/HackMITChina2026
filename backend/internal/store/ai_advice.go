@@ -47,6 +47,20 @@ func (s *GormAIAdviceStore) GetLatestMealWithGrids(
 	return meal, grids, nil
 }
 
+func (s *GormAIAdviceStore) GetUserProfileByUserID(
+	ctx context.Context,
+	userID string,
+) (model.UserProfile, error) {
+	var profile model.UserProfile
+	if err := s.db.WithContext(ctx).
+		Model(&model.UserProfile{}).
+		Where("user_id = ?", userID).
+		First(&profile).Error; err != nil {
+		return model.UserProfile{}, fmt.Errorf("get user profile: %w", err)
+	}
+	return profile, nil
+}
+
 func (s *GormAIAdviceStore) SumTodayCalories(
 	ctx context.Context,
 	userID string,

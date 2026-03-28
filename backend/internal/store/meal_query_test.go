@@ -82,6 +82,84 @@ func TestGormMealQueryStoreAggregateDailyStatistics(t *testing.T) {
 	}
 }
 
+func TestGormMealQueryStoreListMealsFiltersByUserID(t *testing.T) {
+	db, mock, cleanup := newMealQueryMockDB(t)
+	defer cleanup()
+
+	queryPattern := "SELECT .* FROM `meals` WHERE user_id = \\? ORDER BY start_time DESC LIMIT \\?"
+	rows := sqlmock.NewRows([]string{
+		"meal_id",
+		"user_id",
+		"start_time",
+		"duration_minutes",
+		"created_at",
+		"updated_at",
+	}).AddRow(
+		"meal-1",
+		"user-1",
+		time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
+		20,
+		time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 1, 12, 30, 0, 0, time.UTC),
+	)
+
+	mock.ExpectQuery(queryPattern).
+		WithArgs("user-1", 20).
+		WillReturnRows(rows)
+
+	store := NewGormMealQueryStore(db)
+	meals, err := store.ListMeals(context.Background(), "user-1", nil, 20)
+	if err != nil {
+		t.Fatalf("list meals: %v", err)
+	}
+	if len(meals) != 1 || meals[0].MealID != "meal-1" {
+		t.Fatalf("unexpected meals result: %+v", meals)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestGormMealQueryStoreGetMealByIDFiltersByUserID(t *testing.T) {
+	db, mock, cleanup := newMealQueryMockDB(t)
+	defer cleanup()
+
+	queryPattern := "SELECT .* FROM `meals` WHERE meal_id = \\? AND user_id = \\? ORDER BY .* LIMIT \\?"
+	rows := sqlmock.NewRows([]string{
+		"meal_id",
+		"user_id",
+		"start_time",
+		"duration_minutes",
+		"created_at",
+		"updated_at",
+	}).AddRow(
+		"meal-1",
+		"user-1",
+		time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
+		20,
+		time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 1, 12, 30, 0, 0, time.UTC),
+	)
+
+	mock.ExpectQuery(queryPattern).
+		WithArgs("meal-1", "user-1", 1).
+		WillReturnRows(rows)
+
+	store := NewGormMealQueryStore(db)
+	meal, err := store.GetMealByID(context.Background(), "user-1", "meal-1")
+	if err != nil {
+		t.Fatalf("get meal by id: %v", err)
+	}
+	if meal.MealID != "meal-1" || meal.UserID != "user-1" {
+		t.Fatalf("unexpected meal result: %+v", meal)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestGormMealQueryStoreAggregateDailyStatisticsRejectsInvalidDateRange(t *testing.T) {
 	db, mock, cleanup := newMealQueryMockDB(t)
 	defer cleanup()

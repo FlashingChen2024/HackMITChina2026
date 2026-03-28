@@ -20,13 +20,16 @@ type fakeMealQueryStore struct {
 	statsErr  error
 	updateErr error
 
-	lastCursor *time.Time
-	lastLimit  int
-	lastMealID string
-	lastTS     *time.Time
-	lastUserID string
-	lastStart  time.Time
-	lastEnd    time.Time
+	lastCursor           *time.Time
+	lastLimit            int
+	lastListUserID       string
+	lastMealID           string
+	lastGetUserID        string
+	lastTS               *time.Time
+	lastTrajectoryUserID string
+	lastUserID           string
+	lastStart            time.Time
+	lastEnd              time.Time
 
 	updateCalls         int
 	lastUpdateMealID    string
@@ -35,13 +38,20 @@ type fakeMealQueryStore struct {
 	lastUpdateUnitCal   float64
 }
 
-func (f *fakeMealQueryStore) ListMeals(_ context.Context, cursor *time.Time, limit int) ([]model.Meal, error) {
+func (f *fakeMealQueryStore) ListMeals(
+	_ context.Context,
+	userID string,
+	cursor *time.Time,
+	limit int,
+) ([]model.Meal, error) {
+	f.lastListUserID = userID
 	f.lastCursor = cursor
 	f.lastLimit = limit
 	return f.meals, f.err
 }
 
-func (f *fakeMealQueryStore) GetMealByID(_ context.Context, mealID string) (model.Meal, error) {
+func (f *fakeMealQueryStore) GetMealByID(_ context.Context, userID string, mealID string) (model.Meal, error) {
+	f.lastGetUserID = userID
 	f.lastMealID = mealID
 	return f.meal, f.err
 }
@@ -69,7 +79,13 @@ func (f *fakeMealQueryStore) UpdateMealGridFood(
 	return f.updateErr
 }
 
-func (f *fakeMealQueryStore) ListMealTrajectory(_ context.Context, mealID string, lastTimestamp *time.Time) ([]model.MealCurveData, error) {
+func (f *fakeMealQueryStore) ListMealTrajectory(
+	_ context.Context,
+	userID string,
+	mealID string,
+	lastTimestamp *time.Time,
+) ([]model.MealCurveData, error) {
+	f.lastTrajectoryUserID = userID
 	f.lastMealID = mealID
 	f.lastTS = lastTimestamp
 	return f.trajectory, f.err
@@ -92,7 +108,7 @@ func TestMealQueryServiceUsesCursorPagination(t *testing.T) {
 	svc := NewMealQueryService(store)
 	cursor := time.Date(2026, 3, 13, 9, 0, 0, 0, time.UTC)
 
-	if _, err := svc.ListMeals(context.Background(), &cursor); err != nil {
+	if _, err := svc.ListMeals(context.Background(), "user-1", &cursor); err != nil {
 		t.Fatalf("list meals failed: %v", err)
 	}
 
@@ -102,14 +118,20 @@ func TestMealQueryServiceUsesCursorPagination(t *testing.T) {
 	if store.lastCursor == nil || !store.lastCursor.Equal(cursor) {
 		t.Fatalf("expected cursor forwarded")
 	}
+	if store.lastListUserID != "user-1" {
+		t.Fatalf("expected user_id user-1, got %s", store.lastListUserID)
+	}
 }
 
 func TestMealQueryServiceGetByID(t *testing.T) {
 	store := &fakeMealQueryStore{}
 	svc := NewMealQueryService(store)
 
-	if _, err := svc.GetMealByID(context.Background(), "meal-1"); err != nil {
+	if _, err := svc.GetMealByID(context.Background(), "user-1", "meal-1"); err != nil {
 		t.Fatalf("get meal by id failed: %v", err)
+	}
+	if store.lastGetUserID != "user-1" {
+		t.Fatalf("expected get user_id user-1, got %s", store.lastGetUserID)
 	}
 	if store.lastMealID != "meal-1" {
 		t.Fatalf("expected meal id meal-1, got %s", store.lastMealID)
@@ -126,7 +148,7 @@ func TestMealQueryServiceGetDetail(t *testing.T) {
 	}
 	svc := NewMealQueryService(store)
 
-	meal, grids, err := svc.GetMealDetail(context.Background(), "meal-1")
+	meal, grids, err := svc.GetMealDetail(context.Background(), "user-1", "meal-1")
 	if err != nil {
 		t.Fatalf("get meal detail failed: %v", err)
 	}
@@ -135,6 +157,9 @@ func TestMealQueryServiceGetDetail(t *testing.T) {
 	}
 	if len(grids) != 2 {
 		t.Fatalf("expected 2 grids, got %d", len(grids))
+	}
+	if store.lastGetUserID != "user-1" {
+		t.Fatalf("expected detail user_id user-1, got %s", store.lastGetUserID)
 	}
 }
 
@@ -148,7 +173,7 @@ func TestMealQueryServiceAttachFoods(t *testing.T) {
 	}
 	svc := NewMealQueryService(store)
 
-	err := svc.AttachFoods(context.Background(), "meal-1", []model.MealGrid{
+	err := svc.AttachFoods(context.Background(), "user-1", "meal-1", []model.MealGrid{
 		{GridIndex: 1, FoodName: "rice", UnitCalPer100G: 116},
 		{GridIndex: 2, FoodName: "egg", UnitCalPer100G: 80},
 	})
@@ -161,6 +186,9 @@ func TestMealQueryServiceAttachFoods(t *testing.T) {
 	if store.lastUpdateMealID != "meal-1" {
 		t.Fatalf("expected update meal_id=meal-1, got %s", store.lastUpdateMealID)
 	}
+	if store.lastGetUserID != "user-1" {
+		t.Fatalf("expected attach ownership check with user-1, got %s", store.lastGetUserID)
+	}
 }
 
 func TestMealQueryServiceAttachFoodsRejectsDuplicateGrid(t *testing.T) {
@@ -172,7 +200,7 @@ func TestMealQueryServiceAttachFoodsRejectsDuplicateGrid(t *testing.T) {
 	}
 	svc := NewMealQueryService(store)
 
-	err := svc.AttachFoods(context.Background(), "meal-1", []model.MealGrid{
+	err := svc.AttachFoods(context.Background(), "user-1", "meal-1", []model.MealGrid{
 		{GridIndex: 1, FoodName: "rice", UnitCalPer100G: 116},
 		{GridIndex: 1, FoodName: "rice-2", UnitCalPer100G: 116},
 	})
@@ -186,8 +214,11 @@ func TestMealQueryServiceGetTrajectory(t *testing.T) {
 	svc := NewMealQueryService(store)
 	last := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
 
-	if _, err := svc.GetMealTrajectory(context.Background(), "meal-1", &last); err != nil {
+	if _, err := svc.GetMealTrajectory(context.Background(), "user-1", "meal-1", &last); err != nil {
 		t.Fatalf("get meal trajectory failed: %v", err)
+	}
+	if store.lastTrajectoryUserID != "user-1" {
+		t.Fatalf("expected trajectory user_id user-1, got %s", store.lastTrajectoryUserID)
 	}
 	if store.lastMealID != "meal-1" {
 		t.Fatalf("expected meal id meal-1, got %s", store.lastMealID)

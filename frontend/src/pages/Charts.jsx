@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { Alert, Box, Button, Card, CardContent, Grid, TextField, Typography, useTheme, Chip, IconButton, Tooltip } from '@mui/material';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { Alert, Box, Card, CardContent, Grid, TextField, Typography, Chip, IconButton, Tooltip } from '@mui/material';
 import { Refresh as RefreshIcon, DateRange as DateIcon } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
 import { fetchChartData, CHART_TYPES } from '../api/charts';
@@ -15,193 +15,65 @@ const CHART_LABELS = {
   meal_times: '每餐用餐时长',
 };
 
-/**
- * 枚举起止日期内每一天（本地日历），含首尾。
- *
- * @param {string} startStr `YYYY-MM-DD`
- * @param {string} endStr `YYYY-MM-DD`
- * @returns {Date[]}
- */
-function enumerateDaysInclusive(startStr, endStr) {
-  const out = [];
-  const cur = new Date(`${startStr}T12:00:00`);
-  const end = new Date(`${endStr}T12:00:00`);
-  if (Number.isNaN(cur.getTime()) || Number.isNaN(end.getTime()) || cur > end) return out;
-  for (let d = new Date(cur); d <= end; d.setDate(d.getDate() + 1)) {
-    out.push(new Date(d));
-  }
-  return out;
-}
-
-/**
- * 取该日期所在周的周一（00:00 本地）。
- *
- * @param {Date} d
- * @returns {Date}
- */
-function startOfWeekMonday(d) {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const day = x.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  x.setDate(x.getDate() + diff);
-  return x;
-}
-
-/**
- * 周标签：周一–周日，如 `3/3–3/9`。
- *
- * @param {Date} weekMonday
- * @returns {string}
- */
-function formatWeekRangeLabel(weekMonday) {
-  const sun = new Date(weekMonday);
-  sun.setDate(sun.getDate() + 6);
-  const fmt = (dt) => `${dt.getMonth() + 1}/${dt.getDate()}`;
-  return `${fmt(weekMonday)}–${fmt(sun)}`;
-}
-
-/**
- * 将按日对齐的摄入量等汇总为「每周一根柱」。
- *
- * @param {string} start_date
- * @param {string} end_date
- * @param {number[]} intake
- * @returns {{ weekLabels: string[], weeklyIntake: number[] }}
- */
-function aggregateIntakeByCalendarWeek(start_date, end_date, intake) {
-  const days = enumerateDaysInclusive(start_date, end_date);
-  const len = Math.min(days.length, intake.length);
-  /** @type {Map<string, { monday: Date, sum: number }>} */
-  const map = new Map();
-  for (let i = 0; i < len; i++) {
-    const monday = startOfWeekMonday(days[i]);
-    const key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
-    const prev = map.get(key);
-    const add = Number(intake[i]) || 0;
-    if (prev) prev.sum += add;
-    else map.set(key, { monday: new Date(monday), sum: add });
-  }
-  const entries = [...map.entries()].sort((a, b) => a[1].monday.getTime() - b[1].monday.getTime());
+// 将数据按周聚合
+function aggregateByWeek(dates, values) {
+  const weekMap = new Map();
+  
+  dates.forEach((date, index) => {
+    const d = new Date(date);
+    // 获取该日期所在周的周一
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    const weekKey = monday.toISOString().slice(0, 10);
+    const weekLabel = `${monday.getMonth() + 1}/${monday.getDate()}`;
+    
+    if (!weekMap.has(weekKey)) {
+      weekMap.set(weekKey, { label: weekLabel, values: [], total: 0 });
+    }
+    const week = weekMap.get(weekKey);
+    week.values.push(Number(values[index]) || 0);
+    week.total += Number(values[index]) || 0;
+  });
+  
+  // 转换为数组并排序
+  const sorted = Array.from(weekMap.entries())
+    .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+  
   return {
-    weekLabels: entries.map(([, v]) => formatWeekRangeLabel(v.monday)),
-    weeklyIntake: entries.map(([, v]) => Math.round(v.sum * 10) / 10),
+    labels: sorted.map(([_, data]) => data.label),
+    // 周对比显示平均摄入量
+    values: sorted.map(([_, data]) => 
+      data.values.length > 0 ? Number((data.total / data.values.length).toFixed(1)) : 0
+    ),
+    totals: sorted.map(([_, data]) => Number(data.total.toFixed(1)))
   };
 }
 
-/**
- * 将 ISO 时间戳格式化为本地日历日 `YYYY-MM-DD`。
- *
- * @param {string} iso
- * @returns {string}
- */
-function localDayKeyFromIso(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/**
- * 本地日历日 `Date` → `YYYY-MM-DD`。
- *
- * @param {Date} dt
- * @returns {string}
- */
-function localDayKeyFromDate(dt) {
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, '0');
-  const day = String(dt.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/**
- * 分页拉取 `/meals`（降序），收集落在 `[startStr, endStr]` 本地日历日内（含边界）的全部餐次。
- * 翻页直到本页最早一餐早于 `startStr` 的 0 点或达到页数上限。
- *
- * @param {string} startStr `YYYY-MM-DD`
- * @param {string} endStr `YYYY-MM-DD`
- * @param {number} [maxPages]
- * @returns {Promise<Array<{ meal_id: string, start_time: string, duration_minutes?: number }>>}
- */
-async function fetchMealsInLocalDateRange(startStr, endStr, maxPages = 100) {
-  const rangeStart = new Date(`${startStr}T00:00:00`);
-  const rangeEnd = new Date(`${endStr}T23:59:59.999`);
-  if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime()) || rangeStart > rangeEnd) {
-    return [];
+// 限制饼图数据点数量，防止浏览器卡死
+function limitPieData(dates, calories, maxItems = 7) {
+  const data = dates.map((date, i) => ({
+    name: date,
+    value: Number(calories[i]) || 0,
+    originalIndex: i
+  })).filter(item => item.value > 0);
+  
+  // 按值从大到小排序
+  data.sort((a, b) => b.value - a.value);
+  
+  if (data.length <= maxItems) {
+    return data;
   }
-
-  /** @type {Array<{ meal_id: string, start_time: string, duration_minutes?: number }>} */
-  const out = [];
-  let cursor = undefined;
-
-  for (let p = 0; p < maxPages; p += 1) {
-    const res = await fetchMeals({ cursor, limit: 20 });
-    const items = res.items || [];
-    if (items.length === 0) break;
-
-    for (const it of items) {
-      const t = new Date(it.start_time);
-      if (t >= rangeStart && t <= rangeEnd) out.push(it);
-    }
-
-    const last = items[items.length - 1];
-    const lastT = new Date(last.start_time);
-    if (lastT < rangeStart) break;
-    if (!res.next_cursor) break;
-    cursor = res.next_cursor;
-  }
-
-  return out;
-}
-
-/**
- * 按本地日对齐：每天按开餐先后取第 1～3 餐的用餐时长（`duration_minutes`），与 `enumerateDaysInclusive` 顺序一致。
- *
- * @param {string} start_date
- * @param {string} end_date
- * @param {Array<{ start_time: string, duration_minutes?: number }>} meals
- * @returns {{ labels: string[], dur1: (number|null)[], dur2: (number|null)[], dur3: (number|null)[] }}
- */
-function buildDailyMealDurationSeries(start_date, end_date, meals) {
-  const days = enumerateDaysInclusive(start_date, end_date);
-  /** @type {Map<string, Array<{ start_time: string, duration_minutes?: number }>>} */
-  const byDay = new Map();
-
-  for (const m of meals) {
-    const key = localDayKeyFromIso(m.start_time);
-    if (!key || key < start_date || key > end_date) continue;
-    if (!byDay.has(key)) byDay.set(key, []);
-    byDay.get(key).push(m);
-  }
-
-  const labels = [];
-  const dur1 = [];
-  const dur2 = [];
-  const dur3 = [];
-
-  for (const d of days) {
-    const key = localDayKeyFromDate(d);
-    labels.push(`${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-    const arr = (byDay.get(key) || [])
-      .slice()
-      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-
-    const slot = (idx) => {
-      const meal = arr[idx];
-      if (!meal) return null;
-      const raw = meal.duration_minutes;
-      if (raw == null || !Number.isFinite(Number(raw))) return null;
-      return Math.round(Number(raw) * 10) / 10;
-    };
-
-    dur1.push(slot(0));
-    dur2.push(slot(1));
-    dur3.push(slot(2));
-  }
-
-  return { labels, dur1, dur2, dur3 };
+  
+  // 取前 maxItems-1 个，其余合并为"其他"
+  const topItems = data.slice(0, maxItems - 1);
+  const otherItems = data.slice(maxItems - 1);
+  const otherValue = otherItems.reduce((sum, item) => sum + item.value, 0);
+  
+  return [
+    ...topItems,
+    { name: '其他', value: Number(otherValue.toFixed(1)), isOther: true }
+  ];
 }
 
 function useChartOption(chartType, start_date, end_date) {
@@ -209,9 +81,12 @@ function useChartOption(chartType, start_date, end_date) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isEmpty, setIsEmpty] = useState(false);
+  const [rawData, setRawData] = useState(null);
 
   const load = useCallback(async () => {
     if (!start_date || !end_date) return;
+    if (new Date(start_date) > new Date(end_date)) return;
+    
     setLoading(true);
     setError(null);
     setIsEmpty(false);
@@ -299,17 +174,22 @@ function useChartOption(chartType, start_date, end_date) {
       }
 
       const res = await fetchChartData({ start_date, end_date });
-      const root = res.data || res || {};
+      // 严格按照 API 文档解析响应
+      const root = res || {};
       const d = root.chart_data || {};
+      
+      // API 返回的数据结构
       const dates = d.dates || [];
       const served = d.daily_served_g || [];
       const intake = d.daily_intake_g || [];
       const calories = d.daily_calories || [];
       const speeds = d.avg_speed_g_per_min || [];
+      
+      setRawData({ dates, served, intake, calories, speeds });
 
       let hasData =
         dates.length > 0 &&
-        (served.some(v => v != null) ||
+        (served.some(v => v != null && v>0) ||
          intake.some(v => v != null) ||
          calories.some(v => v != null) ||
          speeds.some(v => v != null));
@@ -433,13 +313,35 @@ function useChartOption(chartType, start_date, end_date) {
 
 export default function Charts() {
   const currentUser = getCurrentUser();
-  const theme = useTheme();
   const [start_date, setStart_date] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
     return d.toISOString().slice(0, 10);
   });
   const [end_date, setEnd_date] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateError, setDateError] = useState('');
+
+  // 验证日期范围
+  const validateDates = (start, end) => {
+    if (start && end && new Date(start) > new Date(end)) {
+      setDateError('结束日期不能早于开始日期');
+      return false;
+    }
+    setDateError('');
+    return true;
+  };
+
+  const handleStartDateChange = (e) => {
+    const newStart = e.target.value;
+    setStart_date(newStart);
+    validateDates(newStart, end_date);
+  };
+
+  const handleEndDateChange = (e) => {
+    const newEnd = e.target.value;
+    setEnd_date(newEnd);
+    validateDates(start_date, newEnd);
+  };
 
   return (
     <Box sx={{ pb: 4 }}>
@@ -459,26 +361,38 @@ export default function Charts() {
       </Box>
 
       <Card sx={{ mb: 4, bgcolor: '#fff' }}>
-        <CardContent sx={{ p: 3, display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#64748B' }}>
-            <DateIcon />
-            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>选择时间范围</Typography>
+        <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'flex-start' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#64748B', mt: 1 }}>
+              <DateIcon />
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>选择时间范围</Typography>
+            </Box>
+            <TextField
+              type="date"
+              size="small"
+              label="开始日期"
+              value={start_date}
+              onChange={handleStartDateChange}
+              error={!!dateError}
+              sx={{ width: { xs: '100%', sm: 180 } }}
+              InputLabelProps={{ shrink: true }}
+            />
+            <Typography sx={{ color: '#94A3B8', mt: 1, display: { xs: 'none', sm: 'block' } }}>至</Typography>
+            <TextField
+              type="date"
+              size="small"
+              label="结束日期"
+              value={end_date}
+              onChange={handleEndDateChange}
+              error={!!dateError}
+              helperText={dateError}
+              sx={{ width: { xs: '100%', sm: 180 } }}
+              InputLabelProps={{ shrink: true }}
+              inputProps={{
+                min: start_date
+              }}
+            />
           </Box>
-          <TextField
-            type="date"
-            size="small"
-            value={start_date}
-            onChange={e => setStart_date(e.target.value)}
-            sx={{ width: { xs: '100%', sm: 180 } }}
-          />
-          <Typography sx={{ color: '#94A3B8', display: { xs: 'none', sm: 'block' } }}>至</Typography>
-          <TextField
-            type="date"
-            size="small"
-            value={end_date}
-            onChange={e => setEnd_date(e.target.value)}
-            sx={{ width: { xs: '100%', sm: 180 } }}
-          />
         </CardContent>
       </Card>
 

@@ -32,7 +32,7 @@ func main() {
 	if err := store.AutoMigrate(mysqlDB); err != nil {
 		log.Fatalf("auto migrate failed: %v", err)
 	}
-	log.Printf("auto migrate completed for meals, meal_curve_data, users and device_bindings")
+	log.Printf("auto migrate completed for meals, meal_curve_data, users, user_profiles and device_bindings")
 
 	redisClient, err := store.NewRedis(ctx, store.RedisConfig{
 		Addr:     cfg.RedisAddr,
@@ -53,11 +53,22 @@ func main() {
 	mealPersistence := store.NewGormMealPersistence(mysqlDB)
 	telemetryService := service.NewTelemetryService(deviceStateStore, log.Default(), mealPersistence)
 	telemetryHandler := api.NewTelemetryHandler(telemetryService, deviceBindingService)
-	mealQueryStore := store.NewGormMealQueryStore(mysqlDB)
-	mealQueryService := service.NewMealQueryService(mealQueryStore)
-	mealsHandler := api.NewMealsHandler(mealQueryService)
+	var visionAnalyzer service.VisionAnalyzer
+	visionClient, visionErr := service.NewOpenAIVisionClient(service.VisionClientConfig{
+		BaseURL: cfg.VisionBaseURL,
+		Model:   cfg.VisionModel,
+		APIKey:  cfg.VisionAPIKey,
+	})
+	if visionErr != nil {
+		log.Printf("vision client disabled: %v", visionErr)
+	} else {
+		visionAnalyzer = visionClient
+		log.Printf("vision client enabled with base_url=%s model=%s", cfg.VisionBaseURL, cfg.VisionModel)
+	}
+	visionAnalyzeHandler := api.NewVisionAnalyzeHandler(visionAnalyzer)
 	aiAdviceStore := store.NewGormAIAdviceStore(mysqlDB)
 	var aiGenerator service.AITextGenerator
+	var aiFoodGenerator service.FoodCalorieGenerator
 	aiClient, aiErr := service.NewOpenAICompatibleClient(service.AIModelClientConfig{
 		BaseURL:     cfg.AIBaseURL,
 		Model:       cfg.AIModel,
@@ -68,13 +79,26 @@ func main() {
 		log.Printf("ai client disabled: %v", aiErr)
 	} else {
 		aiGenerator = aiClient
+		aiFoodGenerator = aiClient
 		log.Printf("ai client enabled with base_url=%s model=%s", cfg.AIBaseURL, cfg.AIModel)
 	}
+	foodLibrary := service.NewLLMFoodLibrary(service.NewStaticFoodLibrary(), aiFoodGenerator)
+	foodLibraryHandler := api.NewFoodLibraryHandler(foodLibrary)
+	mealQueryStore := store.NewGormMealQueryStore(mysqlDB)
+	mealQueryService := service.NewMealQueryService(mealQueryStore)
+	mealsHandler := api.NewMealsHandler(mealQueryService)
+	visionConfirmHandler := api.NewVisionConfirmHandler(mealQueryService, foodLibrary)
 	aiAdviceService := service.NewAIAdviceService(aiAdviceStore, aiGenerator)
 	aiAdviceHandler := api.NewAIAdviceHandler(aiAdviceService, log.Default())
+	userProfileStore := store.NewGormUserProfileStore(mysqlDB)
+	userProfileService := service.NewUserProfileService(userProfileStore)
+	userProfileHandler := api.NewUserProfileHandler(userProfileService)
 	communityStore := store.NewGormCommunityStore(mysqlDB)
 	communityService := service.NewCommunityService(communityStore)
 	communityHandler := api.NewCommunityHandler(communityService)
+	alertSettingStore := store.NewGormAlertSettingStore(mysqlDB)
+	alertSettingService := service.NewAlertSettingService(alertSettingStore)
+	alertSettingHandler := api.NewAlertSettingHandler(alertSettingService)
 	userStore := store.NewGormUserStore(mysqlDB)
 	authService := service.NewAuthService(userStore, cfg.JWTSecret, time.Duration(cfg.JWTExpireMins)*time.Minute)
 	authHandler := api.NewAuthHandler(authService)
@@ -83,6 +107,8 @@ func main() {
 	router := server.NewRouter(
 		pingHandler.Handle,
 		telemetryHandler.Handle,
+		visionAnalyzeHandler.Analyze,
+		foodLibraryHandler.Search,
 		authHandler.Register,
 		authHandler.Login,
 		deviceBindingHandler.Bind,
@@ -96,10 +122,15 @@ func main() {
 		mealsHandler.Trajectory,
 		mealsHandler.StatisticsCharts,
 		aiAdviceHandler.Get,
+		userProfileHandler.Upsert,
+		userProfileHandler.Get,
+		visionConfirmHandler.Confirm,
 		communityHandler.Create,
 		communityHandler.Join,
 		communityHandler.List,
 		communityHandler.Dashboard,
+		alertSettingHandler.Upsert,
+		alertSettingHandler.Get,
 	)
 
 	httpServer := &http.Server{

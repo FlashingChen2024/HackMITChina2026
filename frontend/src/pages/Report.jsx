@@ -112,7 +112,7 @@ export default function Report() {
           <CardContent sx={{ p: 4 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Avatar sx={{ bgcolor: advice.is_alert ? '#FEF2F2' : '#F5F3FF', color: advice.is_alert ? '#EF4444' : '#8B5CF6' }}>
+                <Avatar sx={{ bgcolor: advice.is_alert ? '#FEF3C7' : '#F5F3FF', color: advice.is_alert ? '#F59E0B' : '#8B5CF6' }}>
                   {getReportTypeIcon(advice.type)}
                 </Avatar>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -121,9 +121,13 @@ export default function Report() {
               </Box>
               <Chip 
                 label={advice.is_alert ? '健康预警' : '健康建议'} 
-                color={advice.is_alert ? 'error' : 'primary'}
+                color={advice.is_alert ? 'warning' : 'primary'}
                 variant={advice.is_alert ? 'filled' : 'outlined'}
-                sx={{ fontWeight: 600 }}
+                sx={{ 
+                  fontWeight: 600,
+                  bgcolor: advice.is_alert ? '#F59E0B !important' : undefined,
+                  color: advice.is_alert ? '#fff !important' : undefined
+                }}
               />
             </Box>
             <Divider sx={{ mb: 3 }} />

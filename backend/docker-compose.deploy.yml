@@ -61,6 +61,9 @@ services:
       AI_MODEL: "${AI_MODEL:-gpt-4o-mini}"
       AI_API_KEY: "${AI_API_KEY:-}"
       AI_TEMPERATURE: "${AI_TEMPERATURE:-0.7}"
+      VISION_BASE_URL: "${VISION_BASE_URL:-https://api.siliconflow.cn/v1}"
+      VISION_MODEL: "${VISION_MODEL:-Qwen/Qwen3.5-9B}"
+      VISION_API_KEY: "${VISION_API_KEY:-}"
     ports:
       - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
 
