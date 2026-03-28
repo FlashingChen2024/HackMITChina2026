@@ -5,6 +5,7 @@ import {
   Lightbulb as BulbIcon,
   Restaurant as MealIcon,
   DevicesOther as DeviceIcon,
+  FitnessCenter as ProfileIcon,
   Group as CommunityIcon,
   TrendingUp as TrendIcon,
   EmojiEvents as StarIcon
@@ -51,6 +52,14 @@ const modules = [
     icon: <DeviceIcon fontSize="large" />,
     color: '#6366F1',
     bgColor: '#EEF2FF'
+  },
+  {
+    title: '用户画像',
+    desc: '身高体重与性别年龄，助力 AI 估算代谢与建议',
+    path: '/profile',
+    icon: <ProfileIcon fontSize="large" />,
+    color: '#0D9488',
+    bgColor: '#CCFBF1'
   },
   { 
     title: '圈子社区', 

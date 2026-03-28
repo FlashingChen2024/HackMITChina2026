@@ -13,6 +13,7 @@ import {
   Lightbulb as BulbIcon,
   Restaurant as MealIcon,
   DevicesOther as DeviceIcon,
+  FitnessCenter as ProfileIcon,
   Group as CommunityIcon,
   Logout as LogoutIcon,
   AccountCircle as AccountIcon,
@@ -39,6 +40,7 @@ export default function Layout() {
     { to: '/recommendations', label: '个性建议', icon: <BulbIcon /> },
     { to: '/meals', label: '就餐记录', icon: <MealIcon /> },
     { to: '/devices', label: '设备管理', icon: <DeviceIcon /> },
+    { to: '/profile', label: '用户画像', icon: <ProfileIcon /> },
     { to: '/communities', label: '圈子社区', icon: <CommunityIcon /> }
   ];
 
