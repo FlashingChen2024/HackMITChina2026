@@ -167,7 +167,7 @@ export default function Layout() {
       )}
 
       {/* 主内容区 */}
-      <Box component="main" sx={{ flexGrow: 1, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, pb: { xs: 8, md: 4 } }}>
+      <Box component="main" sx={{ flexGrow: 1, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, pb: { xs: 10, md: 4 } }}>
         {/* 顶部导航 */}
         <AppBar 
           position="sticky" 
@@ -245,25 +245,39 @@ export default function Layout() {
             value={location.pathname}
             onChange={(event, newValue) => navigate(newValue)}
             sx={{
-              height: 64,
+              height: 72,
               borderTop: '1px solid #E2E8F0',
               bgcolor: 'rgba(255, 255, 255, 0.9)',
               backdropFilter: 'blur(10px)',
-              pb: 'env(safe-area-inset-bottom)'
+              pb: 'env(safe-area-inset-bottom)',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              justifyContent: 'flex-start',
+              '&::-webkit-scrollbar': {
+                display: 'none'
+              },
+              scrollbarWidth: 'none'
             }}
           >
-            {navItems.slice(0, 5).map((item) => (
+            {navItems.map((item) => (
               <BottomNavigationAction 
                 key={item.to}
                 label={item.label} 
                 value={item.to} 
                 icon={item.icon}
                 sx={{
+                  flex: '0 0 auto',
+                  minWidth: 76,
+                  maxWidth: 96,
                   color: location.pathname === item.to ? 'primary.main' : 'text.secondary',
                   '& .MuiBottomNavigationAction-label': {
-                    fontSize: '0.7rem',
+                    fontSize: '0.68rem',
                     fontWeight: location.pathname === item.to ? 700 : 500,
-                    mt: 0.5
+                    mt: 0.5,
+                    whiteSpace: 'nowrap'
+                  },
+                  '& .MuiSvgIcon-root': {
+                    fontSize: '1.35rem'
                   }
                 }}
               />
