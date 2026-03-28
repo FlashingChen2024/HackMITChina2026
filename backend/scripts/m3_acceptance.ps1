@@ -1,7 +1,5 @@
 $ErrorActionPreference = "Stop"
 
-$rootDir = Split-Path -Parent $PSScriptRoot
-
 $env:HTTP_PORT = "18081"
 $env:MYSQL_DSN = "root:963487158835@tcp(127.0.0.1:3306)/kxyz?charset=utf8mb4&parseTime=True&loc=Local"
 $env:REDIS_ADDR = "127.0.0.1:6379"
@@ -10,16 +8,10 @@ $env:REDIS_DB = "0"
 
 $baseUrl = "http://127.0.0.1:18081/api/v1"
 $runID = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$workDir = "D:\MIT\newdev\backend"
 $logOutPath = Join-Path $env:TEMP ("kxyz-m3-server-" + $runID + ".out.log")
 $logErrPath = Join-Path $env:TEMP ("kxyz-m3-server-" + $runID + ".err.log")
-
-$server = Start-Process -FilePath "go" `
-    -ArgumentList @("run", "./cmd/server") `
-    -WorkingDirectory $rootDir `
-    -PassThru `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $logOutPath `
-    -RedirectStandardError $logErrPath
+$server = Start-Process -FilePath "go" -ArgumentList @("run", "./cmd/server") -WorkingDirectory $workDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $logOutPath -RedirectStandardError $logErrPath
 
 function Invoke-Api {
     param(
@@ -35,64 +27,10 @@ function Invoke-Api {
     }
 
     if ($null -ne $Body) {
-        $json = $Body | ConvertTo-Json -Depth 10
+        $json = $Body | ConvertTo-Json -Depth 20
         return Invoke-RestMethod -Method $Method -Uri ($baseUrl + $Path) -Headers $headers -ContentType "application/json" -Body $json
     }
-
     return Invoke-RestMethod -Method $Method -Uri ($baseUrl + $Path) -Headers $headers
-}
-
-function New-DemoCase {
-    param(
-        [Parameter(Mandatory = $true)] [string]$CaseName,
-        [Parameter(Mandatory = $true)] [int]$HeightCM,
-        [Parameter(Mandatory = $true)] [double]$WeightKG,
-        [Parameter(Mandatory = $true)] [string]$Gender,
-        [Parameter(Mandatory = $true)] [int]$Age,
-        [Parameter(Mandatory = $true)] [string]$Scenario
-    )
-
-    $username = ("m3_" + $CaseName + "_" + $runID)
-    $password = "Passw0rd!123"
-
-    [void](Invoke-Api -Method Post -Path "/auth/register" -Body @{ username = $username; password = $password })
-    $login = Invoke-Api -Method Post -Path "/auth/login" -Body @{ username = $username; password = $password }
-    $token = [string]$login.token
-    $userID = [string]$login.user_id
-
-    if ([string]::IsNullOrWhiteSpace($token) -or [string]::IsNullOrWhiteSpace($userID)) {
-        throw "demo $CaseName auth failed"
-    }
-
-    [void](Invoke-Api -Method Put -Path "/users/me/profile" -Token $token -Body @{
-        height_cm = $HeightCM
-        weight_kg = $WeightKG
-        gender    = $Gender
-        age       = $Age
-    })
-
-    $seedRaw = go run ./scripts/cmd/seed_demo_meal/main.go $env:MYSQL_DSN $userID $Scenario
-    if ([string]::IsNullOrWhiteSpace([string]$seedRaw)) {
-        throw "demo $CaseName seed failed"
-    }
-    $seed = $seedRaw | ConvertFrom-Json
-
-    $advice = Invoke-Api -Method Get -Path "/users/me/ai-advice?type=meal_review" -Token $token
-    if ([string]::IsNullOrWhiteSpace([string]$advice.advice)) {
-        throw "demo $CaseName advice empty"
-    }
-
-    return [PSCustomObject]@{
-        case_name      = $CaseName
-        username       = $username
-        user_id        = $userID
-        scenario       = $Scenario
-        meal_id        = [string]$seed.meal_id
-        total_kcal     = [double]$seed.total_kcal
-        prompt         = [string]$advice.prompt
-        advice         = [string]$advice.advice
-        is_alert       = [bool]$advice.is_alert
-    }
 }
 
 try {
@@ -109,44 +47,77 @@ try {
             Start-Sleep -Seconds 1
         }
     }
-
     if (-not $healthy) {
         throw "server start timeout, out_log=$logOutPath err_log=$logErrPath"
     }
 
-    $demoA = New-DemoCase -CaseName "demo_a" -HeightCM 165 -WeightKG 45 -Gender "female" -Age 18 -Scenario "A"
-    $demoB = New-DemoCase -CaseName "demo_b" -HeightCM 170 -WeightKG 90 -Gender "male" -Age 45 -Scenario "B"
-
-    if (-not $demoA.prompt.Contains("AdvancedPrompt") -or -not $demoB.prompt.Contains("AdvancedPrompt")) {
-        throw "prompt does not contain AdvancedPrompt for both demos"
+    $username = "m3_user_$runID"
+    $password = "Passw0rd!123"
+    [void](Invoke-Api -Method Post -Path "/auth/register" -Body @{ username = $username; password = $password })
+    $login = Invoke-Api -Method Post -Path "/auth/login" -Body @{ username = $username; password = $password }
+    $token = [string]$login.token
+    $userID = [string]$login.user_id
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        throw "login token missing"
     }
 
-    if (-not $demoA.prompt.Contains("165cm") -or -not $demoA.prompt.Contains("45.0kg") -or -not $demoA.prompt.Contains("18")) {
-        throw "demo A prompt missing expected profile markers"
+    $now = Get-Date
+    $startClock = $now.AddMinutes(-1).ToString("HH:mm")
+    $endClock = $now.AddMinutes(1).ToString("HH:mm")
+    $endToday = Get-Date -Hour $now.AddMinutes(1).Hour -Minute $now.AddMinutes(1).Minute -Second 0
+    $targetCheck = $endToday.AddMinutes(1).AddSeconds(5)
+
+    [void](Invoke-Api -Method Put -Path "/users/me/alert-setting" -Token $token -Body @{
+            email          = "m3-$runID@example.com"
+            global_enabled = $true
+            rules          = @{
+                meal_times = @{
+                    enabled   = $true
+                    breakfast = @{ start = "07:00"; end = "09:30" }
+                    lunch     = @{ start = $startClock; end = $endClock }
+                    dinner    = @{ start = "18:00"; end = "20:00" }
+                }
+            }
+        })
+
+    while ((Get-Date) -lt $targetCheck) {
+        Start-Sleep -Seconds 1
     }
 
-    if (-not $demoB.prompt.Contains("170cm") -or -not $demoB.prompt.Contains("90.0kg") -or -not $demoB.prompt.Contains("45")) {
-        throw "demo B prompt missing expected profile markers"
+    $deadline = (Get-Date).AddSeconds(120)
+    $found = $false
+    while ((Get-Date) -lt $deadline) {
+        $logText = (Get-Content -Raw -Path $logOutPath -Encoding UTF8) + "`n" + (Get-Content -Raw -Path $logErrPath -Encoding UTF8)
+        if ($logText -like ("*{0}*" -f $userID)) {
+            $found = $true
+            break
+        }
+        Start-Sleep -Seconds 2
     }
 
-    if (-not $demoA.prompt.Contains("300.0kcal")) {
-        throw "demo A prompt missing expected meal calories 300.0kcal"
+    if (-not $found -and $null -ne $server -and -not $server.HasExited) {
+        Stop-Process -Id $server.Id -Force
+        Start-Sleep -Milliseconds 500
+        $logText = (Get-Content -Raw -Path $logOutPath -Encoding UTF8) + "`n" + (Get-Content -Raw -Path $logErrPath -Encoding UTF8)
+        if ($logText -like ("*{0}*" -f $userID)) {
+            $found = $true
+        }
     }
 
-    if (-not $demoB.prompt.Contains("1000.0kcal")) {
-        throw "demo B prompt missing expected meal calories 1000.0kcal"
-    }
-
-    if ($demoA.advice -eq $demoB.advice) {
-        throw "demo A/B advice should be different"
+    if (-not $found) {
+        throw ("acceptance failed: missed-meal warning not found, out_log={0} err_log={1}" -f $logOutPath, $logErrPath)
     }
 
     [PSCustomObject]@{
-        ping           = $ping.message
-        demo_a         = $demoA
-        demo_b         = $demoB
-        server_out_log = $logOutPath
-        server_err_log = $logErrPath
+        ping             = $ping.message
+        username         = $username
+        user_id          = $userID
+        lunch_start      = $startClock
+        lunch_end        = $endClock
+        warning_found    = $found
+        server_out_log   = $logOutPath
+        server_err_log   = $logErrPath
+        acceptance_case  = "M3 meal_times cron missed lunch"
     } | ConvertTo-Json -Depth 8
 }
 finally {

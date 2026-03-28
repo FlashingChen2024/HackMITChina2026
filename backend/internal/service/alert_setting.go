@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
 	"kxyz-backend/internal/model"
+
+	"gorm.io/datatypes"
 )
 
 type AlertSettingStore interface {
@@ -14,8 +17,9 @@ type AlertSettingStore interface {
 }
 
 type UpsertAlertSettingInput struct {
-	Email   string
-	Enabled bool
+	Email         string
+	GlobalEnabled bool
+	RulesJSON     datatypes.JSON
 }
 
 type AlertSettingService struct {
@@ -42,9 +46,10 @@ func (s *AlertSettingService) UpsertAlertSetting(
 	}
 
 	setting := model.AlertSetting{
-		UserID:  userID,
-		Email:   email,
-		Enabled: input.Enabled,
+		UserID:        userID,
+		Email:         email,
+		GlobalEnabled: input.GlobalEnabled,
+		RulesJSON:     normalizeRulesJSON(input.RulesJSON),
 	}
 
 	return s.store.UpsertAlertSetting(ctx, setting)
@@ -57,4 +62,14 @@ func (s *AlertSettingService) GetAlertSetting(ctx context.Context, userID string
 	}
 
 	return s.store.GetAlertSettingByUserID(ctx, userID)
+}
+
+func normalizeRulesJSON(raw datatypes.JSON) datatypes.JSON {
+	if len(raw) == 0 {
+		return datatypes.JSON([]byte(`{}`))
+	}
+	if !json.Valid(raw) {
+		return datatypes.JSON([]byte(`{}`))
+	}
+	return raw
 }

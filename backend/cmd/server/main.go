@@ -44,14 +44,26 @@ func main() {
 	}
 	defer redisClient.Close()
 	log.Printf("redis connected")
+	alertNotifier := service.NewSMTPAlertNotifier(
+		cfg.SMTPHost,
+		cfg.SMTPPort,
+		cfg.SMTPUsername,
+		cfg.SMTPPassword,
+		cfg.SMTPFrom,
+	)
 
 	pingHandler := api.NewPingHandler()
 	deviceBindingStore := store.NewGormDeviceBindingStore(mysqlDB)
 	deviceBindingService := service.NewDeviceBindingService(deviceBindingStore)
 	deviceBindingHandler := api.NewDeviceBindingHandler(deviceBindingService)
+	alertSettingStore := store.NewGormAlertSettingStore(mysqlDB)
+	alertSettingService := service.NewAlertSettingService(alertSettingStore)
+	alertSettingHandler := api.NewAlertSettingHandler(alertSettingService)
 	deviceStateStore := service.NewRedisDeviceStateStore(redisClient)
 	mealPersistence := store.NewGormMealPersistence(mysqlDB)
-	telemetryService := service.NewTelemetryService(deviceStateStore, log.Default(), mealPersistence)
+	telemetryService := service.
+		NewTelemetryService(deviceStateStore, log.Default(), mealPersistence).
+		WithMealAlertChecker(service.NewRuleBasedMealAlertChecker(alertSettingService, log.Default(), alertNotifier))
 	telemetryHandler := api.NewTelemetryHandler(telemetryService, deviceBindingService)
 	var visionAnalyzer service.VisionAnalyzer
 	visionClient, visionErr := service.NewOpenAIVisionClient(service.VisionClientConfig{
@@ -96,9 +108,14 @@ func main() {
 	communityStore := store.NewGormCommunityStore(mysqlDB)
 	communityService := service.NewCommunityService(communityStore)
 	communityHandler := api.NewCommunityHandler(communityService)
-	alertSettingStore := store.NewGormAlertSettingStore(mysqlDB)
-	alertSettingService := service.NewAlertSettingService(alertSettingStore)
-	alertSettingHandler := api.NewAlertSettingHandler(alertSettingService)
+	mealTimeAlertStore := store.NewGormMealTimeAlertStore(mysqlDB)
+	mealTimeAlertService := service.NewMealTimeAlertService(mealTimeAlertStore, mealTimeAlertStore, log.Default(), alertNotifier)
+	mealTimeAlertCron, err := service.NewMealTimeAlertCron(mealTimeAlertService, log.Default())
+	if err != nil {
+		log.Fatalf("init meal-time alert cron failed: %v", err)
+	}
+	mealTimeAlertCron.Start()
+	defer mealTimeAlertCron.Stop()
 	userStore := store.NewGormUserStore(mysqlDB)
 	authService := service.NewAuthService(userStore, cfg.JWTSecret, time.Duration(cfg.JWTExpireMins)*time.Minute)
 	authHandler := api.NewAuthHandler(authService)

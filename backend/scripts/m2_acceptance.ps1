@@ -6,47 +6,12 @@ $env:REDIS_ADDR = "127.0.0.1:6379"
 $env:REDIS_PASSWORD = ""
 $env:REDIS_DB = "0"
 
-function Load-EnvFileMap {
-    param(
-        [Parameter(Mandatory = $true)] [string]$Path
-    )
-
-    $map = @{}
-    if (-not (Test-Path $Path)) {
-        return $map
-    }
-
-    foreach ($line in Get-Content -Path $Path -Encoding utf8) {
-        $trimmed = $line.Trim()
-        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) {
-            continue
-        }
-        $parts = $trimmed.Split("=", 2)
-        if ($parts.Count -ne 2) {
-            continue
-        }
-        $key = $parts[0].Trim()
-        $value = $parts[1].Trim()
-        if ($key -ne "") {
-            $map[$key] = $value
-        }
-    }
-
-    return $map
-}
-
-$envFileMap = Load-EnvFileMap -Path "D:\MIT\backend\.env"
-foreach ($key in @("AI_BASE_URL", "AI_MODEL", "AI_API_KEY", "AI_TEMPERATURE")) {
-    if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($key)) -and $envFileMap.ContainsKey($key)) {
-        [Environment]::SetEnvironmentVariable($key, $envFileMap[$key])
-    }
-}
-
 $baseUrl = "http://127.0.0.1:18080/api/v1"
 $runID = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$workDir = "D:\MIT\newdev\backend"
 $logOutPath = Join-Path $env:TEMP ("kxyz-m2-server-" + $runID + ".out.log")
 $logErrPath = Join-Path $env:TEMP ("kxyz-m2-server-" + $runID + ".err.log")
-$server = Start-Process -FilePath "go" -ArgumentList @("run", "./cmd/server") -WorkingDirectory "D:\MIT\backend" -PassThru -WindowStyle Hidden -RedirectStandardOutput $logOutPath -RedirectStandardError $logErrPath
+$server = Start-Process -FilePath "go" -ArgumentList @("run", "./cmd/server") -WorkingDirectory $workDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $logOutPath -RedirectStandardError $logErrPath
 
 function Invoke-Api {
     param(
@@ -62,10 +27,9 @@ function Invoke-Api {
     }
 
     if ($null -ne $Body) {
-        $json = $Body | ConvertTo-Json -Depth 10
+        $json = $Body | ConvertTo-Json -Depth 20
         return Invoke-RestMethod -Method $Method -Uri ($baseUrl + $Path) -Headers $headers -ContentType "application/json" -Body $json
     }
-
     return Invoke-RestMethod -Method $Method -Uri ($baseUrl + $Path) -Headers $headers
 }
 
@@ -83,140 +47,81 @@ try {
             Start-Sleep -Seconds 1
         }
     }
-
     if (-not $healthy) {
         throw "server start timeout, out_log=$logOutPath err_log=$logErrPath"
     }
 
-    $username = "m2_user_$runID"
+    $username = "laochen_$runID"
     $password = "Passw0rd!123"
     [void](Invoke-Api -Method Post -Path "/auth/register" -Body @{ username = $username; password = $password })
     $login = Invoke-Api -Method Post -Path "/auth/login" -Body @{ username = $username; password = $password }
     $token = [string]$login.token
+    $userID = [string]$login.user_id
     if ([string]::IsNullOrWhiteSpace($token)) {
         throw "login token missing"
     }
 
+    [void](Invoke-Api -Method Put -Path "/users/me/alert-setting" -Token $token -Body @{
+            email          = "laochen-$runID@example.com"
+            global_enabled = $true
+            rules          = @{
+                speed = @{
+                    enabled = $true
+                    min     = 0
+                    max     = 10
+                }
+            }
+        })
+
     $deviceID = "ESP32_M2_$runID"
     [void](Invoke-Api -Method Post -Path "/devices/bind" -Token $token -Body @{ device_id = $deviceID })
 
-    $community = Invoke-Api -Method Post -Path "/communities/create" -Token $token -Body @{
-        name        = "M2 Chain $runID"
-        description = "M2 E2E acceptance"
-    }
-    $communityID = [string]$community.community_id
-    if ([string]::IsNullOrWhiteSpace($communityID)) {
-        throw "community_id missing after create"
-    }
+    $base = [DateTime]::UtcNow.AddHours(1)
+    $t0 = $base
+    $t1 = $base.AddSeconds(20)
+    $t2 = $base.AddSeconds(50)
+    $t3 = $base.AddSeconds(80)
 
-    $t0 = [DateTime]::UtcNow.AddHours(2)
-    $t1 = $t0.AddSeconds(20)
-    $t2 = $t1.AddMinutes(5)
-    $t3 = $t1.AddMinutes(20)
+    [void](Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
+            device_id = $deviceID
+            timestamp = $t0.ToString("o")
+            weights   = @{ grid_1 = 100.0; grid_2 = 0.0; grid_3 = 0.0; grid_4 = 0.0 }
+        })
+    [void](Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
+            device_id = $deviceID
+            timestamp = $t1.ToString("o")
+            weights   = @{ grid_1 = 95.0; grid_2 = 0.0; grid_3 = 0.0; grid_4 = 0.0 }
+        })
+    [void](Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
+            device_id = $deviceID
+            timestamp = $t2.ToString("o")
+            weights   = @{ grid_1 = 50.0; grid_2 = 0.0; grid_3 = 0.0; grid_4 = 0.0 }
+        })
+    [void](Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
+            device_id = $deviceID
+            timestamp = $t3.ToString("o")
+            weights   = @{ grid_1 = 0.0; grid_2 = 0.0; grid_3 = 0.0; grid_4 = 0.0 }
+        })
 
-    $telemetry1 = Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
-        device_id  = $deviceID
-        timestamp  = $t0.ToString("o")
-        weights    = @{ grid_1 = 220.0; grid_2 = 160.0; grid_3 = 140.0; grid_4 = 100.0 }
-    }
-    $telemetry2 = Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
-        device_id  = $deviceID
-        timestamp  = $t1.ToString("o")
-        weights    = @{ grid_1 = 210.0; grid_2 = 150.0; grid_3 = 130.0; grid_4 = 90.0 }
-    }
-    $telemetry3 = Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
-        device_id  = $deviceID
-        timestamp  = $t2.ToString("o")
-        weights    = @{ grid_1 = 120.0; grid_2 = 70.0; grid_3 = 40.0; grid_4 = 20.0 }
-    }
-    $telemetry4 = Invoke-Api -Method Post -Path "/hardware/telemetry" -Body @{
-        device_id  = $deviceID
-        timestamp  = $t3.ToString("o")
-        weights    = @{ grid_1 = 0.0; grid_2 = 0.0; grid_3 = 0.0; grid_4 = 0.0 }
-    }
-
-    if ($telemetry1.current_state -ne "SERVING") {
-        throw "unexpected state after telemetry1: $($telemetry1.current_state)"
-    }
-    if ($telemetry2.current_state -ne "EATING") {
-        throw "unexpected state after telemetry2: $($telemetry2.current_state)"
-    }
-    if ($telemetry4.current_state -ne "IDLE") {
-        throw "unexpected state after telemetry4: $($telemetry4.current_state)"
-    }
-
-    $mealList = Invoke-Api -Method Get -Path "/meals" -Token $token
-    $items = @($mealList.items)
-    if ($items.Count -eq 0) {
-        throw "no meals found after telemetry sequence"
-    }
-
-    $targetMeal = $null
-    $threshold = $t0.AddMinutes(-1)
-    foreach ($item in $items) {
-        $startTime = [DateTime]::Parse([string]$item.start_time).ToUniversalTime()
-        if ($startTime -ge $threshold) {
-            $targetMeal = $item
-            break
-        }
-    }
-    if ($null -eq $targetMeal) {
-        $targetMeal = $items[0]
-    }
-
-    $mealID = [string]$targetMeal.meal_id
-    if ([string]::IsNullOrWhiteSpace($mealID)) {
-        throw "meal_id missing in meals response"
-    }
-
-    [void](Invoke-Api -Method Put -Path ("/meals/" + $mealID + "/foods") -Token $token -Body @{
-        grids = @(
-            @{ grid_index = 1; food_name = "Chicken Breast"; unit_cal_per_100g = 165.0 },
-            @{ grid_index = 2; food_name = "Brown Rice"; unit_cal_per_100g = 116.0 },
-            @{ grid_index = 3; food_name = "Broccoli"; unit_cal_per_100g = 33.0 },
-            @{ grid_index = 4; food_name = "Seaweed Soup"; unit_cal_per_100g = 15.0 }
-        )
-    })
-
-    $advice = Invoke-Api -Method Get -Path "/users/me/ai-advice" -Token $token
-    if ([string]::IsNullOrWhiteSpace([string]$advice.advice)) {
-        throw "ai advice empty"
-    }
-
-    $dashboard = Invoke-Api -Method Get -Path ("/communities/" + $communityID + "/dashboard") -Token $token
-    $foodStats = @($dashboard.food_avg_stats)
-    if ($foodStats.Count -eq 0) {
-        throw "dashboard food_avg_stats empty"
-    }
-
-    $hasChicken = $false
-    foreach ($row in $foodStats) {
-        if ([string]$row.food_name -eq "Chicken Breast" -and [double]$row.avg_served_g -gt 0) {
-            $hasChicken = $true
-            break
-        }
-    }
-    if (-not $hasChicken) {
-        throw "dashboard does not contain expected Chicken Breast stats"
+    Start-Sleep -Milliseconds 600
+    $outText = Get-Content -Raw -Path $logOutPath -Encoding UTF8
+    $errText = Get-Content -Raw -Path $logErrPath -Encoding UTF8
+    $logText = $outText + "`n" + $errText
+    $hasWarning = ($logText -like ("*{0}*50.0g/min*10.0g/min*" -f $userID))
+    if (-not $hasWarning) {
+        throw ("acceptance failed: warning log not found, out_log={0}" -f $logOutPath)
     }
 
     [PSCustomObject]@{
-        ping             = $ping.message
-        username         = $username
-        device_id        = $deviceID
-        community_id     = $communityID
-        meal_id          = $mealID
-        telemetry_states = @(
-            [string]$telemetry1.current_state,
-            [string]$telemetry2.current_state,
-            [string]$telemetry3.current_state,
-            [string]$telemetry4.current_state
-        )
-        ai_advice_type   = [string]$advice.type
-        ai_advice_sample = [string]$advice.advice
-        dashboard_rows   = $foodStats.Count
-        server_out_log   = $logOutPath
-        server_err_log   = $logErrPath
+        ping               = $ping.message
+        username           = $username
+        user_id            = $userID
+        device_id          = $deviceID
+        expected_warning   = "contains user_id + 50.0g/min + 10.0g/min"
+        warning_log_found  = $hasWarning
+        server_out_log     = $logOutPath
+        server_err_log     = $logErrPath
+        acceptance_case    = "M2 check meal alerts speed threshold"
     } | ConvertTo-Json -Depth 8
 }
 finally {

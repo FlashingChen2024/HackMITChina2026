@@ -497,67 +497,76 @@ JSON
 
 ---
 
-### 🔔 第六部分：告警设置 (Alert Settings)
+### 🔔 第六部分：告警与健康规则引擎 (Alert Settings)
 
-用于配置用户邮箱告警通知，当检测到健康数据异常时发送邮件提醒。
+用于配置用户高精度的个性化饮食阈值。当就餐数据越界，或在规定时间窗口内未检测到就餐行为时，系统将触发告警通知。
 
-#### 8.3 获取告警设置
+#### 8.3 获取高精告警规则设置
 
 - **接口路径**: `GET /users/me/alert-setting`
-
+  
 - **成功响应** `200 OK`:
+  
 
-```json
+JSON
+
+```
 {
-  "alert_setting": {
-    "user_id": "string",
-    "email": "user@example.com",
-    "enabled": true
+  "user_id": "string",
+  "email": "user@example.com",
+  "global_enabled": true,
+  "rules": {
+    "duration": { "enabled": true, "min": 10.0, "max": 40.0 },
+    "speed": { "enabled": true, "min": 5.0, "max": 25.0 },
+    "intake": { "enabled": false, "min": 200.0, "max": 800.0 },
+    "leftover": { "enabled": true, "min": 0.0, "max": 50.0 },
+    "calories": { "enabled": true, "min": 300.0, "max": 1000.0 },
+    "meal_times": {
+      "enabled": true,
+      "breakfast": { "start": "07:00", "end": "09:30" },
+      "lunch": { "start": "11:30", "end": "13:30" },
+      "dinner": { "start": "17:30", "end": "20:00" }
+    }
   }
 }
 ```
 
-- **错误响应** `404 Not Found`: 用户尚未配置告警设置
+*(注：若用户从未设置，后端应返回 200 并携带一套系统默认的健康规则，而非 404，确保前端可以直接渲染开关。)*
 
----
+#### 8.4 更新高精告警规则
 
-#### 8.4 更新告警设置
-
-前端表单提交，后端执行 Upsert（存在则更新，不存在则新建）。
+前端在设置页调整滑块、时间选择器或开关后提交，后端执行 Upsert 保存。
 
 - **接口路径**: `PUT /users/me/alert-setting`
-
+  
 - **请求体**:
+  
+  *(与 8.3 响应体中的 `email`, `global_enabled`, `rules` 结构完全一致)*
+  
 
-```json
+JSON
+
+```
 {
   "email": "user@example.com",
-  "enabled": true
-}
-```
-
-- **参数说明**:
-  - `email` *(string)*: 接收告警通知的邮箱地址
-  - `enabled` *(boolean)*: 是否启用邮箱告警
-
-- **成功响应** `200 OK`:
-
-```json
-{
-  "message": "告警设置保存成功",
-  "alert_setting": {
-    "user_id": "string",
-    "email": "user@example.com",
-    "enabled": true
+  "global_enabled": true,
+  "rules": {
+    "duration": { "enabled": true, "min": 15.0, "max": 30.0 },
+    "speed": { "enabled": true, "min": 10.0, "max": 20.0 },
+    "intake": { "enabled": true, "min": 300.0, "max": 700.0 },
+    "leftover": { "enabled": true, "min": 0.0, "max": 20.0 },
+    "calories": { "enabled": true, "min": 400.0, "max": 800.0 },
+    "meal_times": {
+      "enabled": true,
+      "breakfast": { "start": "07:00", "end": "09:00" },
+      "lunch": { "start": "11:30", "end": "13:30" },
+      "dinner": { "start": "18:00", "end": "20:00" }
+    }
   }
 }
 ```
 
-- **错误响应** `400 Bad Request`: 
-  - 启用告警时必须填写邮箱地址
-  - 请求体格式错误
-
----
+- **成功响应** `200 OK`: `{"message": "告警规则配置保存成功"}`
 
 ### 👁️ 第七部分：视觉智能与食物库 (Vision & Food DB)
 
