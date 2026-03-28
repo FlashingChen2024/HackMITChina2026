@@ -13,9 +13,7 @@ import {
   StopCircle as StopCameraIcon,
   Send as SendIcon,
   AutoAwesome as AiVisionIcon,
-  Timeline as TimelineIcon
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../api/client';
 import { fetchMeals, updateMealFoods, confirmMealVision } from '../api/meals';
 import { analyzeVision } from '../api/vision';
@@ -26,7 +24,6 @@ import { compressDataUrlForVision } from '../utils/imageCompress';
 const TARGET_MEAL_CURRENT = '__current_meal__';
 
 export default function Meals() {
-  const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -621,15 +618,6 @@ export default function Meals() {
                             }}
                           />
                         )}
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<TimelineIcon />}
-                          onClick={() => navigate(`/meals/${m.meal_id}/trajectory`)}
-                          sx={{ ml: 'auto' }}
-                        >
-                          查看轨迹
-                        </Button>
                       </Box>
                     </Box>
                   </Box>

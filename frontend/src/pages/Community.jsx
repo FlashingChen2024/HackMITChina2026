@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container,
   Box,
@@ -102,10 +102,25 @@ export default function Community() {
     setMessage(null);
     try {
       const res = await createCommunity({ name: createForm.name, description: createForm.description });
-      setCreatedCommunityId(res.community_id);
-      setMessage(`✓ ${res.message} (ID: ${res.community_id})`);
+      const newId = res.community_id || '';
+      setCreatedCommunityId(newId);
+      let copied = false;
+      if (newId) {
+        try {
+          await navigator.clipboard.writeText(newId);
+          copied = true;
+        } catch (clipErr) {
+          console.warn('自动复制社区 ID 失败:', clipErr);
+        }
+      }
+      setMessage(
+        copied
+          ? `✓ ${res.message}，社区 ID 已自动复制到剪贴板`
+          : newId
+            ? `✓ ${res.message} (ID: ${newId})，请手动复制 ID`
+            : `✓ ${res.message}`,
+      );
       setCreateForm({ name: '', description: '' });
-      // 刷新社区列表
       loadMyCommunities();
     } catch (err) {
       setError(err.message || '创建社区失败');

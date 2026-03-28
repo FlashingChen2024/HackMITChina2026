@@ -135,7 +135,6 @@ export default function Home() {
           mb: 4,
           background: 'linear-gradient(135deg, #00BFA5 0%, #008573 100%)',
           color: 'white',
-          borderRadius: 3,
           boxShadow: '0 8px 24px rgba(0, 191, 165, 0.25)',
         }}
       >
@@ -216,7 +215,6 @@ export default function Home() {
             <Card
               sx={{
                 height: '100%',
-                borderRadius: 3,
                 bgcolor: grid.color.bg,
                 border: 'none',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
@@ -250,10 +248,10 @@ export default function Home() {
                     value={grid.progress}
                     sx={{
                       height: 12,
-                      borderRadius: 6,
+                      borderRadius: '4px',
                       bgcolor: 'rgba(255,255,255,0.5)',
                       '& .MuiLinearProgress-bar': {
-                        borderRadius: 6,
+                        borderRadius: '4px',
                         bgcolor: grid.color.bar,
                         transition: 'transform 0.5s ease',
                       },
@@ -283,7 +281,6 @@ export default function Home() {
             mt: 3,
             p: 4,
             textAlign: 'center',
-            borderRadius: 3,
             bgcolor: '#F8FAFC',
             border: '1px dashed #CBD5E1',
           }}

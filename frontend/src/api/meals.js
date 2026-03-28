@@ -43,15 +43,3 @@ export function updateMealFoods(mealId, grids) {
 export function confirmMealVision(mealId, grids) {
   return post(`/api/v1/meals/${encodeURIComponent(mealId)}/vision-confirm`, { grids });
 }
-
-/**
- * Meal trajectory (supports incremental query and downsampling).
- * GET /meals/{meal_id}/trajectory
- */
-export function fetchMealTrajectory(mealId, { lastTimestamp, sampleInterval } = {}) {
-  const params = new URLSearchParams();
-  if (lastTimestamp) params.set('last_timestamp', lastTimestamp);
-  if (sampleInterval != null) params.set('sample_interval', String(sampleInterval));
-  const q = params.toString() ? `?${params}` : '';
-  return get(`/api/v1/meals/${encodeURIComponent(mealId)}/trajectory${q}`);
-}
