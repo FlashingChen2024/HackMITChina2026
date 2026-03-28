@@ -343,7 +343,7 @@ export default function Meals() {
         food_code: String(g.food_code).trim(),
       }));
     if (visionGrids.length === 0) {
-      setError('请至少一个格口完成识菜并产生食物编码，或使用下方「手动卡路里点火」');
+      setError('请至少一个格口完成识菜并产生食物编码，或使用下方「手动卡路里计算」');
       return;
     }
     setSubmitLoading(true);
@@ -403,11 +403,8 @@ export default function Meals() {
     <Box sx={{ pb: 4, maxWidth: 1000, mx: 'auto' }}>
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
-            菜品视觉识别与卡路里点火
-          </Typography>
-          <Typography variant="body2" sx={{ mb: 2, color: '#64748B' }}>
-            流程对齐 API v4.4：按格口拍照后可点「AI 识菜」走 §9.1→§9.2 回填食物库编码，再点「视觉确认挂载」调用 §9.3；或直接手填名称与热量，使用「手动卡路里点火」调用 §4.1。
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
+            菜品视觉识别与卡路里计算
           </Typography>
 
           <Stack spacing={2}>
@@ -433,7 +430,6 @@ export default function Meals() {
               label="当前拍照格口"
               value={activeCaptureGrid}
               onChange={(e) => setActiveCaptureGrid(Number(e.target.value))}
-              helperText="建议按格口 1~4 依次拍照"
             >
               <MenuItem value={1}>格口 1</MenuItem>
               <MenuItem value={2}>格口 2</MenuItem>
@@ -447,7 +443,6 @@ export default function Meals() {
               label="拍照模式"
               value={autoAdvanceCapture ? 'auto' : 'manual'}
               onChange={(e) => setAutoAdvanceCapture(e.target.value === 'auto')}
-              helperText="连拍模式会在每次拍照后自动切换到下一个格口"
             >
               <MenuItem value="auto">连拍模式（自动跳格口）</MenuItem>
               <MenuItem value="manual">手动模式（不自动跳）</MenuItem>
@@ -563,8 +558,7 @@ export default function Meals() {
                           label="食物库编码 (food_code)"
                           value={grid.food_code}
                           onChange={(e) => updateGridInput(grid.grid_index, 'food_code', e.target.value)}
-                          placeholder="识菜后自动填入，§9.3 必填"
-                          helperText="用于 POST /meals/{meal_id}/vision-confirm"
+                          placeholder="识菜后自动填入，9.3 必填"
                         />
                       </Stack>
                     </CardContent>
@@ -581,7 +575,7 @@ export default function Meals() {
                 onClick={submitVisionConfirm}
                 disabled={submitLoading || visionBusy}
               >
-                {submitLoading ? '提交中...' : '视觉确认挂载 (§9.3)'}
+                {submitLoading ? '提交中...' : '视觉确认挂载 (9.3)'}
               </Button>
               <Button
                 variant="contained"
@@ -589,7 +583,7 @@ export default function Meals() {
                 onClick={submitManualFoods}
                 disabled={submitLoading || visionBusy}
               >
-                {submitLoading ? '提交中...' : '手动卡路里点火 (§4.1)'}
+                {submitLoading ? '提交中...' : '手动卡路里计算 (4.1)'}
               </Button>
               <Button
                 variant="text"
