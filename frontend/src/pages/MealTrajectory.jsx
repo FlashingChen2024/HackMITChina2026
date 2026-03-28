@@ -67,6 +67,8 @@ export default function MealTrajectory() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [sampleInterval, setSampleInterval] = useState(0);
   const [lastTimestamp, setLastTimestamp] = useState(null);
+  /** 增量拉轨迹用，避免放进 useCallback 依赖导致「全量 effect」反复触发、图表闪屏 */
+  const lastTimestampRef = useRef(null);
   const refreshTimerRef = useRef(null);
   
   // 分页状态
@@ -126,14 +128,20 @@ export default function MealTrajectory() {
   const loadTrajectory = useCallback(async (isIncremental = false) => {
     if (!selectedMealId) return;
 
-    setLoading(true);
+    if (!isIncremental) {
+      lastTimestampRef.current = null;
+    }
+
+    if (!isIncremental) {
+      setLoading(true);
+    }
     setError('');
     try {
       const params = {
         sampleInterval: sampleInterval > 0 ? sampleInterval : undefined,
       };
-      if (isIncremental && lastTimestamp) {
-        params.lastTimestamp = lastTimestamp;
+      if (isIncremental && lastTimestampRef.current) {
+        params.lastTimestamp = lastTimestampRef.current;
       }
 
       const res = await fetchMealTrajectory(selectedMealId, params);
@@ -146,19 +154,23 @@ export default function MealTrajectory() {
       }
 
       if (res.last_timestamp) {
+        lastTimestampRef.current = res.last_timestamp;
         setLastTimestamp(res.last_timestamp);
       }
     } catch (e) {
       setError('加载轨迹数据失败: ' + (e.message || '未知错误'));
     } finally {
-      setLoading(false);
+      if (!isIncremental) {
+        setLoading(false);
+      }
     }
-  }, [selectedMealId, sampleInterval, lastTimestamp]);
+  }, [selectedMealId, sampleInterval]);
 
-  // 初始加载和切换就餐记录时加载
+  // 初始加载和切换就餐记录 / 降采样时全量加载（不依赖会随请求变化的回调形态）
   useEffect(() => {
     if (selectedMealId) {
       setLastTimestamp(null);
+      lastTimestampRef.current = null;
       setTrajectoryData([]);
       loadTrajectory(false);
     }
@@ -279,6 +291,7 @@ export default function MealTrajectory() {
 
   const handleRefresh = () => {
     setLastTimestamp(null);
+    lastTimestampRef.current = null;
     loadTrajectory(false);
   };
 
