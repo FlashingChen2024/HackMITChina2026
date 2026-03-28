@@ -47,6 +47,7 @@ type DeviceSession struct {
 	ServingStableTS        int64
 	ServedGridTotals       [4]int
 	ActiveMealID           string
+	ActiveUserID           string
 	ActiveMealStartTS      int64
 	EatingStableTS         int64
 }
@@ -84,7 +85,26 @@ func (noopMealPersistence) InsertMealGrids(_ context.Context, _ string, _ []mode
 type TelemetryService struct {
 	store       DeviceStateStore
 	persistence MealPersistence
+	alerts      MealAlertChecker
 	logger      *log.Logger
+}
+
+type MealAlertMetrics struct {
+	DurationMinutes int
+	TotalServedG    int
+	TotalIntakeG    int
+	TotalLeftoverG  int
+	SpeedGPerMin    float64
+}
+
+type MealAlertChecker interface {
+	CheckMealAlerts(ctx context.Context, mealID string, userID string, metrics MealAlertMetrics) error
+}
+
+type noopMealAlertChecker struct{}
+
+func (noopMealAlertChecker) CheckMealAlerts(_ context.Context, _ string, _ string, _ MealAlertMetrics) error {
+	return nil
 }
 
 type deviceStateLocker interface {
@@ -100,8 +120,16 @@ func NewTelemetryService(store DeviceStateStore, logger *log.Logger, persistence
 	return &TelemetryService{
 		store:       store,
 		persistence: target,
+		alerts:      noopMealAlertChecker{},
 		logger:      logger,
 	}
+}
+
+func (s *TelemetryService) WithMealAlertChecker(checker MealAlertChecker) *TelemetryService {
+	if checker != nil {
+		s.alerts = checker
+	}
+	return s
 }
 
 func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (TelemetryResult, error) {
@@ -177,6 +205,7 @@ func (s *TelemetryService) Process(ctx context.Context, input TelemetryInput) (T
 				if err := s.persistence.CreateMeal(ctx, session.ActiveMealID, input.UserID, input.Timestamp); err != nil {
 					return TelemetryResult{}, fmt.Errorf("create meal: %w", err)
 				}
+				session.ActiveUserID = input.UserID
 				session.ActiveMealStartTS = input.Timestamp.Unix()
 			}
 
@@ -328,8 +357,16 @@ func (s *TelemetryService) finishMeal(ctx context.Context, session *DeviceSessio
 		return fmt.Errorf("insert meal grids: %w", err)
 	}
 
+	metrics := buildMealAlertMetrics(durationMinutes, grids)
+	if session.ActiveUserID != "" {
+		if err := s.alerts.CheckMealAlerts(ctx, session.ActiveMealID, session.ActiveUserID, metrics); err != nil {
+			s.logger.Printf("[告警检查失败] meal_id=%s user_id=%s err=%v", session.ActiveMealID, session.ActiveUserID, err)
+		}
+	}
+
 	session.CurrentState = StateIdle
 	session.ActiveMealID = ""
+	session.ActiveUserID = ""
 	session.ActiveMealStartTS = 0
 	session.ServingBaseWeight = 0
 	session.ServingBaseGridWeights = [4]int{}
@@ -339,6 +376,19 @@ func (s *TelemetryService) finishMeal(ctx context.Context, session *DeviceSessio
 	session.ServingStableTS = 0
 	session.EatingStableTS = 0
 	return nil
+}
+
+func buildMealAlertMetrics(durationMinutes int, grids []model.MealGrid) MealAlertMetrics {
+	metrics := MealAlertMetrics{DurationMinutes: durationMinutes}
+	for _, grid := range grids {
+		metrics.TotalServedG += grid.ServedG
+		metrics.TotalIntakeG += grid.IntakeG
+		metrics.TotalLeftoverG += grid.LeftoverG
+	}
+	if durationMinutes > 0 {
+		metrics.SpeedGPerMin = float64(metrics.TotalIntakeG) / float64(durationMinutes)
+	}
+	return metrics
 }
 
 type RedisDeviceStateStore struct {
@@ -361,6 +411,7 @@ func (s *RedisDeviceStateStore) Load(ctx context.Context, deviceID string) (Devi
 	session := DeviceSession{
 		CurrentState:           values["current_state"],
 		ActiveMealID:           values["active_meal_id"],
+		ActiveUserID:           values["active_user_id"],
 		ActiveMealStartTS:      parseInt64(values["active_meal_start_ts"]),
 		ServingBaseWeight:      parseInt(values["serving_base_weight"]),
 		ServingBaseGridWeights: parseGridWeights(values["serving_base_grid_weights"]),
@@ -401,6 +452,7 @@ func (s *RedisDeviceStateStore) Save(ctx context.Context, deviceID string, sessi
 		"served_grid_totals":        formatGridWeights(session.ServedGridTotals),
 		"serving_stable_ts":         session.ServingStableTS,
 		"active_meal_id":            session.ActiveMealID,
+		"active_user_id":            session.ActiveUserID,
 		"active_meal_start_ts":      session.ActiveMealStartTS,
 		"eating_stable_ts":          session.EatingStableTS,
 	}

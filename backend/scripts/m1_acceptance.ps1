@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 $env:HTTP_PORT = "8080"
 $env:MYSQL_DSN = "root:963487158835@tcp(127.0.0.1:3306)/kxyz?charset=utf8mb4&parseTime=True&loc=Local"
@@ -8,9 +8,10 @@ $env:REDIS_DB = "0"
 
 $baseUrl = "http://127.0.0.1:8080/api/v1"
 $runID = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$workDir = "D:\MIT\newdev\backend"
 $logOutPath = Join-Path $env:TEMP ("kxyz-m1-server-" + $runID + ".out.log")
 $logErrPath = Join-Path $env:TEMP ("kxyz-m1-server-" + $runID + ".err.log")
-$server = Start-Process -FilePath "go" -ArgumentList @("run", "./cmd/server") -WorkingDirectory "D:\MIT\backend" -PassThru -WindowStyle Hidden -RedirectStandardOutput $logOutPath -RedirectStandardError $logErrPath
+$server = Start-Process -FilePath "go" -ArgumentList @("run", "./cmd/server") -WorkingDirectory $workDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $logOutPath -RedirectStandardError $logErrPath
 
 function Invoke-Api {
     param(
@@ -26,10 +27,9 @@ function Invoke-Api {
     }
 
     if ($null -ne $Body) {
-        $json = $Body | ConvertTo-Json -Depth 10
+        $json = $Body | ConvertTo-Json -Depth 20
         return Invoke-RestMethod -Method $Method -Uri ($baseUrl + $Path) -Headers $headers -ContentType "application/json" -Body $json
     }
-
     return Invoke-RestMethod -Method $Method -Uri ($baseUrl + $Path) -Headers $headers
 }
 
@@ -47,58 +47,62 @@ try {
             Start-Sleep -Seconds 1
         }
     }
-
     if (-not $healthy) {
         throw "server start timeout, out_log=$logOutPath err_log=$logErrPath"
     }
 
-    $userA = "m1_user_a_$runID"
-    $userB = "m1_user_b_$runID"
+    $username = "m1_user_$runID"
     $password = "Passw0rd!123"
-
-    [void](Invoke-Api -Method Post -Path "/auth/register" -Body @{ username = $userA; password = $password })
-    [void](Invoke-Api -Method Post -Path "/auth/register" -Body @{ username = $userB; password = $password })
-
-    $loginA = Invoke-Api -Method Post -Path "/auth/login" -Body @{ username = $userA; password = $password }
-    $loginB = Invoke-Api -Method Post -Path "/auth/login" -Body @{ username = $userB; password = $password }
-
-    $tokenA = [string]$loginA.token
-    $tokenB = [string]$loginB.token
-
-    if ([string]::IsNullOrWhiteSpace($tokenA) -or [string]::IsNullOrWhiteSpace($tokenB)) {
+    [void](Invoke-Api -Method Post -Path "/auth/register" -Body @{ username = $username; password = $password })
+    $login = Invoke-Api -Method Post -Path "/auth/login" -Body @{ username = $username; password = $password }
+    $token = [string]$login.token
+    if ([string]::IsNullOrWhiteSpace($token)) {
         throw "login token missing"
     }
 
-    $cutCommunity = Invoke-Api -Method Post -Path "/communities/create" -Token $tokenA -Body @{ name = "减脂圈"; description = "M1验收-减脂" }
-    $bulkCommunity = Invoke-Api -Method Post -Path "/communities/create" -Token $tokenB -Body @{ name = "增肌圈"; description = "M1验收-增肌" }
+    [void](Invoke-Api -Method Put -Path "/users/me/alert-setting" -Token $token -Body @{
+            email          = "m1-$runID@example.com"
+            global_enabled = $true
+            rules          = @{
+                leftover = @{
+                    enabled = $true
+                    max     = 20
+                }
+                speed = @{
+                    enabled = $true
+                    max     = 10
+                }
+            }
+        })
 
-    $cutCommunityID = [string]$cutCommunity.community_id
-    $bulkCommunityID = [string]$bulkCommunity.community_id
-    if ([string]::IsNullOrWhiteSpace($cutCommunityID) -or [string]::IsNullOrWhiteSpace($bulkCommunityID)) {
-        throw "community_id missing after create"
-    }
+    [void](Invoke-Api -Method Put -Path "/users/me/alert-setting" -Token $token -Body @{
+            email          = "m1-$runID@example.com"
+            global_enabled = $true
+            rules          = @{
+                leftover = @{
+                    enabled = $true
+                    max     = 35
+                }
+                speed = @{
+                    enabled = $true
+                    max     = 10
+                }
+            }
+        })
 
-    [void](Invoke-Api -Method Post -Path ("/communities/" + $cutCommunityID + "/join") -Token $tokenB)
-
-    $listA = Invoke-Api -Method Get -Path "/communities" -Token $tokenA
-    $listB = Invoke-Api -Method Get -Path "/communities" -Token $tokenB
-
-    $countA = @($listA.items).Count
-    $countB = @($listB.items).Count
-    if ($countA -ne 1 -or $countB -ne 2) {
-        throw "acceptance failed: expected A=1 B=2, got A=$countA B=$countB"
+    $setting = Invoke-Api -Method Get -Path "/users/me/alert-setting" -Token $token
+    $savedMax = [int]$setting.rules.leftover.max
+    if ($savedMax -ne 35) {
+        throw "acceptance failed: expected leftover.max=35, got $savedMax"
     }
 
     [PSCustomObject]@{
-        ping         = $ping.message
-        user_a       = $userA
-        user_b       = $userB
-        community_a  = $cutCommunityID
-        community_b  = $bulkCommunityID
-        list_count_a = $countA
-        list_count_b = $countB
-        server_out_log = $logOutPath
-        server_err_log = $logErrPath
+        ping            = $ping.message
+        username        = $username
+        leftover_max    = $savedMax
+        server_out_log  = $logOutPath
+        server_err_log  = $logErrPath
+        acceptance_case = "M1 rules_json get/put"
     } | ConvertTo-Json -Depth 5
 }
 finally {
@@ -106,4 +110,3 @@ finally {
         Stop-Process -Id $server.Id -Force
     }
 }
-

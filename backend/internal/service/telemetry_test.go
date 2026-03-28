@@ -68,6 +68,32 @@ type memoryMealPersistence struct {
 	mealGrids []mealGridRecord
 }
 
+type memoryMealAlertChecker struct {
+	calls []struct {
+		MealID  string
+		UserID  string
+		Metrics MealAlertMetrics
+	}
+}
+
+func (m *memoryMealAlertChecker) CheckMealAlerts(
+	_ context.Context,
+	mealID string,
+	userID string,
+	metrics MealAlertMetrics,
+) error {
+	m.calls = append(m.calls, struct {
+		MealID  string
+		UserID  string
+		Metrics MealAlertMetrics
+	}{
+		MealID:  mealID,
+		UserID:  userID,
+		Metrics: metrics,
+	})
+	return nil
+}
+
 func (m *memoryMealPersistence) CreateMeal(
 	_ context.Context,
 	mealID string,
@@ -481,5 +507,44 @@ func TestTelemetryUsesDeviceLockWhenAvailable(t *testing.T) {
 	}
 	if store.unlockCalls != 1 {
 		t.Fatalf("expected unlock calls=1, got %d", store.unlockCalls)
+	}
+}
+
+func TestTelemetryCallsMealAlertHookOnMealFinish(t *testing.T) {
+	store := newMemoryDeviceStateStore()
+	persistence := &memoryMealPersistence{}
+	checker := &memoryMealAlertChecker{}
+	svc := NewTelemetryService(store, log.Default(), persistence).WithMealAlertChecker(checker)
+	ctx := context.Background()
+
+	base := time.Date(2026, 3, 13, 14, 0, 0, 0, time.UTC)
+	inputs := []TelemetryInput{
+		{DeviceID: "dev-hook", UserID: "user-hook", WeightG: 100, Timestamp: base},
+		{DeviceID: "dev-hook", UserID: "user-hook", WeightG: 95, Timestamp: base.Add(20 * time.Second)},
+		{DeviceID: "dev-hook", UserID: "user-hook", WeightG: 50, Timestamp: base.Add(50 * time.Second)},
+		{DeviceID: "dev-hook", UserID: "user-hook", WeightG: 0, Timestamp: base.Add(80 * time.Second)},
+	}
+
+	for _, input := range inputs {
+		if _, err := svc.Process(ctx, input); err != nil {
+			t.Fatalf("process telemetry failed: %v", err)
+		}
+	}
+
+	if len(checker.calls) != 1 {
+		t.Fatalf("expected 1 alert hook call, got %d", len(checker.calls))
+	}
+	call := checker.calls[0]
+	if call.UserID != "user-hook" {
+		t.Fatalf("expected user-hook, got %s", call.UserID)
+	}
+	if call.Metrics.DurationMinutes != 1 {
+		t.Fatalf("expected duration_minutes=1, got %d", call.Metrics.DurationMinutes)
+	}
+	if call.Metrics.TotalIntakeG != 50 {
+		t.Fatalf("expected intake=50, got %d", call.Metrics.TotalIntakeG)
+	}
+	if call.Metrics.SpeedGPerMin != 50 {
+		t.Fatalf("expected speed=50, got %.1f", call.Metrics.SpeedGPerMin)
 	}
 }

@@ -30,9 +30,10 @@ func (s *GormAlertSettingStore) UpsertAlertSetting(ctx context.Context, setting 
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "user_id"}},
 			DoUpdates: clause.Assignments(map[string]any{
-				"email":      setting.Email,
-				"enabled":    setting.Enabled,
-				"updated_at": now,
+				"email":          setting.Email,
+				"global_enabled": setting.GlobalEnabled,
+				"rules_json":     setting.RulesJSON,
+				"updated_at":     now,
 			}),
 		}).
 		Create(&setting).Error; err != nil {
