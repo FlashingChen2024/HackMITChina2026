@@ -9,6 +9,7 @@ import Devices from './pages/Devices';
 import Communities from './pages/Communities';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
+import MealTrajectory from './pages/MealTrajectory';
 import { getToken } from './api/client';
 import './App.css';
 
@@ -28,6 +29,8 @@ export default function App() {
         <Route path="report" element={<RequireAuth><Report /></RequireAuth>} />
         <Route path="recommendations" element={<RequireAuth><Recommendations /></RequireAuth>} />
         <Route path="meals" element={<RequireAuth><Meals /></RequireAuth>} />
+        <Route path="meals/:mealId/trajectory" element={<RequireAuth><MealTrajectory /></RequireAuth>} />
+        <Route path="trajectory" element={<RequireAuth><MealTrajectory /></RequireAuth>} />
         <Route path="devices" element={<RequireAuth><Devices /></RequireAuth>} />
         <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="communities" element={<RequireAuth><Communities /></RequireAuth>} />
