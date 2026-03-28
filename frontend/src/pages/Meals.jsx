@@ -1,10 +1,36 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Card, CardContent, Typography, Button, Alert, CircularProgress, Box, Chip, Grid,
-  Avatar, Divider, IconButton, Tooltip, TextField, Stack, MenuItem
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Alert,
+  CircularProgress,
+  Box,
+  Chip,
+  Grid,
+  Avatar,
+  Divider,
+  IconButton,
+  Tooltip,
+  TextField,
+  Stack,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CardActionArea,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material';
-import { 
-  Refresh as RefreshIcon, 
+import {
+  Refresh as RefreshIcon,
   Restaurant as MealIcon,
   Timer as TimerIcon,
   LocalFireDepartment as CalorieIcon,
@@ -13,15 +39,36 @@ import {
   StopCircle as StopCameraIcon,
   Send as SendIcon,
   AutoAwesome as AiVisionIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
-import { fetchMeals, updateMealFoods, confirmMealVision } from '../api/meals';
+import { fetchMeals, fetchMealDetail, updateMealFoods, confirmMealVision } from '../api/meals';
 import { analyzeVision } from '../api/vision';
 import { searchFoodLibrary } from '../api/foodLibrary';
 import { compressDataUrlForVision } from '../utils/imageCompress';
 
 /** 目标餐次下拉中「当前餐次」选项的值（非真实 meal_id，提交前需解析） */
 const TARGET_MEAL_CURRENT = '__current_meal__';
+
+/**
+ * @typedef {object} MealGridDetailRow
+ * @property {number} grid_index
+ * @property {string} [food_name]
+ * @property {number} [served_g]
+ * @property {number} [intake_g]
+ * @property {number} [leftover_g]
+ * @property {number} [total_cal]
+ * @property {number} [speed_g_per_min]
+ */
+
+/**
+ * @typedef {object} MealDetailPayload
+ * @property {string} meal_id
+ * @property {string} [start_time]
+ * @property {number} [duration_minutes]
+ * @property {number} [total_meal_cal]
+ * @property {MealGridDetailRow[]} [grid_details]
+ */
 
 export default function Meals() {
   const currentUser = getCurrentUser();
@@ -53,6 +100,12 @@ export default function Meals() {
     { grid_index: 3, food_name: '', unit_cal_per_100g: '', food_code: '' },
     { grid_index: 4, food_name: '', unit_cal_per_100g: '', food_code: '' },
   ]);
+
+  /** 就餐详情弹窗（§4.3 GET /meals/{meal_id}） */
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [detailMeal, setDetailMeal] = useState(/** @type {MealDetailPayload | null} */ (null));
 
   const load = async (cursor = '') => {
     setLoading(true);
@@ -102,6 +155,36 @@ export default function Meals() {
     return new Intl.DateTimeFormat('zh-CN', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }).format(date);
+  };
+
+  /**
+   * 打开 §4.3 餐次详情（GET /meals/{meal_id}）并展示 grid_details。
+   *
+   * @param {string} mealId
+   * @returns {Promise<void>}
+   */
+  const openMealDetail = async (mealId) => {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError('');
+    setDetailMeal(null);
+    try {
+      const data = await fetchMealDetail(mealId);
+      setDetailMeal(data);
+    } catch (e) {
+      setDetailError(e?.message || '加载用餐详情失败');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  /**
+   * @returns {void}
+   */
+  const closeMealDetail = () => {
+    setDetailOpen(false);
+    setDetailMeal(null);
+    setDetailError('');
   };
 
   const mealOptions = useMemo(() => items.map((m) => ({
@@ -536,7 +619,9 @@ export default function Meals() {
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 4, gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>就餐记录</Typography>
-          <Typography variant="body1" sx={{ color: '#64748B' }}>回顾您的每一次健康饮食</Typography>
+          <Typography variant="body1" sx={{ color: '#64748B' }}>
+            回顾您的每一次健康饮食；点击记录卡片可查看各餐格详细数据
+          </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {currentUser && (
@@ -565,63 +650,79 @@ export default function Meals() {
         <Grid container spacing={3}>
           {items.map((m) => (
             <Grid item xs={12} key={m.meal_id}>
-              <Card sx={{ 
-                transition: 'transform 0.2s, box-shadow 0.2s',
-                '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }
-              }}>
-                <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
-                    <Avatar sx={{ 
-                      width: 56, height: 56, 
-                      bgcolor: 'rgba(16, 185, 129, 0.1)', color: '#10B981',
-                      display: { xs: 'none', sm: 'flex' }
-                    }}>
-                      <MealIcon fontSize="medium" />
-                    </Avatar>
-                    
-                    <Box sx={{ flex: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, flexWrap: 'wrap', gap: 1 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {formatDate(m.start_time)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace' }}>
-                          ID: {m.meal_id}
-                        </Typography>
-                      </Box>
-                      
-                      <Divider sx={{ my: 1.5 }} />
-                      
-                      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <Chip
-                          icon={<TimeIcon fontSize="small" />}
-                          label={new Date(m.start_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                          variant="outlined"
-                          sx={{ borderColor: '#E2E8F0', color: '#64748B' }}
-                        />
-                        {m.duration_minutes != null && (
+              <Card
+                sx={{
+                  transition: 'transform 0.2s, box-shadow 0.2s',
+                  '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' },
+                }}
+              >
+                <CardActionArea
+                  component="div"
+                  onClick={() => openMealDetail(m.meal_id)}
+                  aria-label={`查看 ${formatDate(m.start_time)} 用餐详情`}
+                >
+                  <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+                      <Avatar
+                        sx={{
+                          width: 56,
+                          height: 56,
+                          bgcolor: 'rgba(16, 185, 129, 0.1)',
+                          color: '#10B981',
+                          display: { xs: 'none', sm: 'flex' },
+                        }}
+                      >
+                        <MealIcon fontSize="medium" />
+                      </Avatar>
+
+                      <Box sx={{ flex: 1, textAlign: 'left' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B', display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {formatDate(m.start_time)}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#94A3B8', fontFamily: 'monospace' }}>
+                            ID: {m.meal_id}
+                          </Typography>
+                        </Box>
+
+                        <Divider sx={{ my: 1.5 }} />
+
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                           <Chip
-                            icon={<TimerIcon fontSize="small" />}
-                            label={`${m.duration_minutes} 分钟`}
+                            icon={<TimeIcon fontSize="small" />}
+                            label={new Date(m.start_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                             variant="outlined"
                             sx={{ borderColor: '#E2E8F0', color: '#64748B' }}
                           />
-                        )}
-                        {m.total_meal_cal != null && m.total_meal_cal > 0 && (
-                          <Chip
-                            icon={<CalorieIcon fontSize="small" />}
-                            label={`${m.total_meal_cal} kcal`}
-                            sx={{ 
-                              bgcolor: 'rgba(239, 68, 68, 0.1)', 
-                              color: '#EF4444',
-                              fontWeight: 600,
-                              border: 'none'
-                            }}
-                          />
-                        )}
+                          {m.duration_minutes != null && (
+                            <Chip
+                              icon={<TimerIcon fontSize="small" />}
+                              label={`${m.duration_minutes} 分钟`}
+                              variant="outlined"
+                              sx={{ borderColor: '#E2E8F0', color: '#64748B' }}
+                            />
+                          )}
+                          {m.total_meal_cal != null && m.total_meal_cal > 0 && (
+                            <Chip
+                              icon={<CalorieIcon fontSize="small" />}
+                              label={`${m.total_meal_cal} kcal`}
+                              sx={{
+                                bgcolor: 'rgba(239, 68, 68, 0.1)',
+                                color: '#EF4444',
+                                fontWeight: 600,
+                                border: 'none',
+                              }}
+                            />
+                          )}
+                        </Box>
+
+                        <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'primary.main', fontWeight: 600 }}>
+                          点击查看餐格详情 →
+                        </Typography>
                       </Box>
                     </Box>
-                  </Box>
-                </CardContent>
+                  </CardContent>
+                </CardActionArea>
               </Card>
             </Grid>
           ))}
@@ -652,6 +753,127 @@ export default function Meals() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={detailOpen}
+        onClose={closeMealDetail}
+        maxWidth="md"
+        fullWidth
+        scroll="paper"
+        PaperProps={{ sx: { borderRadius: '20px' } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, pr: 1 }}>
+          <Box>
+            <Typography component="span" variant="h6" sx={{ fontWeight: 800, color: '#1E293B' }}>
+              用餐详情
+            </Typography>
+            {detailMeal?.meal_id && (
+              <Typography variant="caption" sx={{ display: 'block', color: '#64748B', fontFamily: 'monospace', mt: 0.5 }}>
+                {detailMeal.meal_id}
+              </Typography>
+            )}
+          </Box>
+          <IconButton aria-label="关闭" onClick={closeMealDetail} size="small" sx={{ color: '#64748B' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {detailLoading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+              <CircularProgress sx={{ color: '#00BFA5' }} />
+            </Box>
+          )}
+          {!detailLoading && detailError && (
+            <Alert severity="error" sx={{ borderRadius: '12px' }}>{detailError}</Alert>
+          )}
+          {!detailLoading && !detailError && detailMeal && (
+            <Stack spacing={2}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {detailMeal.start_time && (
+                  <Chip
+                    size="small"
+                    icon={<TimeIcon />}
+                    label={formatDate(detailMeal.start_time)}
+                    variant="outlined"
+                    sx={{ borderColor: '#E2E8F0' }}
+                  />
+                )}
+                {detailMeal.duration_minutes != null && (
+                  <Chip
+                    size="small"
+                    icon={<TimerIcon />}
+                    label={`时长 ${detailMeal.duration_minutes} 分钟`}
+                    variant="outlined"
+                    sx={{ borderColor: '#E2E8F0' }}
+                  />
+                )}
+                {detailMeal.total_meal_cal != null && detailMeal.total_meal_cal > 0 && (
+                  <Chip
+                    size="small"
+                    icon={<CalorieIcon />}
+                    label={`合计 ${Number(detailMeal.total_meal_cal).toFixed(0)} kcal`}
+                    sx={{ bgcolor: 'rgba(239, 68, 68, 0.08)', color: '#EF4444', border: 'none' }}
+                  />
+                )}
+              </Box>
+
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B' }}>
+                各餐格数据（grid_details）
+              </Typography>
+
+              {(!detailMeal.grid_details || detailMeal.grid_details.length === 0) ? (
+                <Alert severity="info" sx={{ borderRadius: '12px' }}>
+                  暂无餐格明细，请确认已完成食物挂载或遥测同步。
+                </Alert>
+              ) : (
+                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '12px', borderColor: '#E2E8F0' }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: '#F8FAFC' }}>
+                        <TableCell sx={{ fontWeight: 700 }}>餐格</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>食物</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>打饭 (g)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>摄入 (g)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>剩余 (g)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>热量 (kcal)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>速度 (g/min)</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {[...(detailMeal.grid_details || [])]
+                        .sort((a, b) => (a.grid_index || 0) - (b.grid_index || 0))
+                        .map((row) => (
+                          <TableRow key={row.grid_index} hover>
+                            <TableCell>{row.grid_index ?? '—'}</TableCell>
+                            <TableCell sx={{ fontWeight: 600, color: '#1E293B' }}>
+                              {row.food_name?.trim() ? row.food_name : '—'}
+                            </TableCell>
+                            <TableCell align="right">{row.served_g ?? '—'}</TableCell>
+                            <TableCell align="right">{row.intake_g ?? '—'}</TableCell>
+                            <TableCell align="right">
+                              {row.leftover_g != null ? row.leftover_g : '—'}
+                            </TableCell>
+                            <TableCell align="right">
+                              {row.total_cal != null ? Number(row.total_cal).toFixed(1) : '—'}
+                            </TableCell>
+                            <TableCell align="right">
+                              {row.speed_g_per_min != null ? Number(row.speed_g_per_min).toFixed(1) : '—'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={closeMealDetail} variant="contained" sx={{ textTransform: 'none', fontWeight: 600 }}>
+            关闭
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
