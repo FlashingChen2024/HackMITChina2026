@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultVisionTimeout = 2 * time.Second
+	defaultVisionTimeout = 1 * time.Minute
 	visionSystemPrompt   = "你是 K-XYZ 食物识别引擎。请只返回 JSON，格式为{\"tags\":[\"食物1\",\"食物2\"]}，不要输出任何额外说明。"
 	visionUserPrompt     = "请识别图片中的主要食物并返回中文标签数组。"
 )

@@ -66,14 +66,9 @@ func main() {
 		log.Printf("vision client enabled with base_url=%s model=%s", cfg.VisionBaseURL, cfg.VisionModel)
 	}
 	visionAnalyzeHandler := api.NewVisionAnalyzeHandler(visionAnalyzer)
-	foodLibrary := service.NewStaticFoodLibrary()
-	foodLibraryHandler := api.NewFoodLibraryHandler(foodLibrary)
-	mealQueryStore := store.NewGormMealQueryStore(mysqlDB)
-	mealQueryService := service.NewMealQueryService(mealQueryStore)
-	mealsHandler := api.NewMealsHandler(mealQueryService)
-	visionConfirmHandler := api.NewVisionConfirmHandler(mealQueryService, foodLibrary)
 	aiAdviceStore := store.NewGormAIAdviceStore(mysqlDB)
 	var aiGenerator service.AITextGenerator
+	var aiFoodGenerator service.FoodCalorieGenerator
 	aiClient, aiErr := service.NewOpenAICompatibleClient(service.AIModelClientConfig{
 		BaseURL:     cfg.AIBaseURL,
 		Model:       cfg.AIModel,
@@ -84,8 +79,15 @@ func main() {
 		log.Printf("ai client disabled: %v", aiErr)
 	} else {
 		aiGenerator = aiClient
+		aiFoodGenerator = aiClient
 		log.Printf("ai client enabled with base_url=%s model=%s", cfg.AIBaseURL, cfg.AIModel)
 	}
+	foodLibrary := service.NewLLMFoodLibrary(service.NewStaticFoodLibrary(), aiFoodGenerator)
+	foodLibraryHandler := api.NewFoodLibraryHandler(foodLibrary)
+	mealQueryStore := store.NewGormMealQueryStore(mysqlDB)
+	mealQueryService := service.NewMealQueryService(mealQueryStore)
+	mealsHandler := api.NewMealsHandler(mealQueryService)
+	visionConfirmHandler := api.NewVisionConfirmHandler(mealQueryService, foodLibrary)
 	aiAdviceService := service.NewAIAdviceService(aiAdviceStore, aiGenerator)
 	aiAdviceHandler := api.NewAIAdviceHandler(aiAdviceService, log.Default())
 	userProfileStore := store.NewGormUserProfileStore(mysqlDB)
