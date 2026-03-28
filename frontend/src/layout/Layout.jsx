@@ -17,12 +17,16 @@ import {
   Group as CommunityIcon,
   Logout as LogoutIcon,
   AccountCircle as AccountIcon,
-  Menu as MenuIcon
+  Menu as MenuIcon,
+  Timeline as TimelineIcon
 } from '@mui/icons-material';
 import { getToken, setToken, getCurrentUser } from '../api/client';
 
 const DRAWER_WIDTH = 280;
 
+/**
+ * Main layout component with sidebar navigation and routing outlet
+ */
 export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -39,6 +43,7 @@ export default function Layout() {
     { to: '/report', label: 'AI 报告', icon: <ReportIcon /> },
     { to: '/recommendations', label: '个性建议', icon: <BulbIcon /> },
     { to: '/meals', label: '就餐记录', icon: <MealIcon /> },
+    { to: '/trajectory', label: '实时轨迹', icon: <TimelineIcon /> },
     { to: '/devices', label: '设备管理', icon: <DeviceIcon /> },
     { to: '/communities', label: '圈子社区', icon: <CommunityIcon /> },
     { to: '/profile', label: '个人信息', icon: <ProfileIcon /> }

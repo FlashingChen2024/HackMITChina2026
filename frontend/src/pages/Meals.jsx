@@ -13,7 +13,9 @@ import {
   StopCircle as StopCameraIcon,
   Send as SendIcon,
   AutoAwesome as AiVisionIcon,
+  Timeline as TimelineIcon
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { getCurrentUser } from '../api/client';
 import { fetchMeals, updateMealFoods, confirmMealVision } from '../api/meals';
 import { analyzeVision } from '../api/vision';
@@ -21,6 +23,7 @@ import { searchFoodLibrary } from '../api/foodLibrary';
 import { compressDataUrlForVision } from '../utils/imageCompress';
 
 export default function Meals() {
+  const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -571,7 +574,7 @@ export default function Meals() {
                       
                       <Divider sx={{ my: 1.5 }} />
                       
-                      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                         <Chip
                           icon={<TimeIcon fontSize="small" />}
                           label={new Date(m.start_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
@@ -598,6 +601,15 @@ export default function Meals() {
                             }}
                           />
                         )}
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<TimelineIcon />}
+                          onClick={() => navigate(`/meals/${m.meal_id}/trajectory`)}
+                          sx={{ ml: 'auto' }}
+                        >
+                          查看轨迹
+                        </Button>
                       </Box>
                     </Box>
                   </Box>
