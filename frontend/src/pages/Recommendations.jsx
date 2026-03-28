@@ -51,8 +51,8 @@ export default function Recommendations() {
           startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SparkleIcon />}
           sx={{ 
             borderRadius: 8, px: 3, py: 1.5,
-            background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-            '&:hover': { background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' }
+            background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+            '&:hover': { background: 'linear-gradient(135deg, #059669 0%, #047857 100%)' }
           }}
         >
           {loading ? '生成中...' : '重新生成建议'}

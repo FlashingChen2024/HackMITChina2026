@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
 import {
   Alert,
   Avatar,
@@ -6,22 +6,27 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Grid,
+  IconButton,
   Paper,
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
   useTheme,
 } from '@mui/material';
 import {
   AddCircleOutline as AddIcon,
+  ContentCopy as CopyIcon,
   Dashboard as DashboardIcon,
   GroupAdd as JoinIcon,
   PeopleAlt as PeopleIcon,
+  Visibility as ViewIcon,
 } from '@mui/icons-material';
-import { createCommunity, getCommunityDashboard, joinCommunity } from '../api/communities';
+import { createCommunity, getCommunityDashboard, joinCommunity, listCommunities } from '../api/communities';
 
 function TabPanel({ children, value, index }) {
   return (
@@ -44,6 +49,10 @@ export default function Communities() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // 我的社区列表
+  const [myCommunities, setMyCommunities] = useState([]);
+  const [loadingMyCommunities, setLoadingMyCommunities] = useState(false);
+
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
   const [lastCreatedId, setLastCreatedId] = useState('');
@@ -53,9 +62,44 @@ export default function Communities() {
   const [dashboardId, setDashboardId] = useState('');
   const [dashboard, setDashboard] = useState(null);
 
+  // 加载我的社区列表
+  const loadMyCommunities = async () => {
+    setLoadingMyCommunities(true);
+    try {
+      const res = await listCommunities();
+      setMyCommunities(res.items || []);
+    } catch (err) {
+      console.error('加载社区列表失败:', err);
+    } finally {
+      setLoadingMyCommunities(false);
+    }
+  };
+
+  // 初始加载
+  useEffect(() => {
+    loadMyCommunities();
+  }, []);
+
   const clearMessages = () => {
     setError('');
     setSuccess('');
+  };
+
+  // 复制到剪贴板
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setSuccess('已复制到剪贴板');
+    setTimeout(() => setSuccess(''), 2000);
+  };
+
+  // 跳转到社区看板
+  const goToDashboard = (communityId) => {
+    setDashboardId(communityId);
+    setActiveTab(3);
+    // 自动加载看板
+    setTimeout(() => {
+      handleLoadDashboardById(communityId);
+    }, 100);
   };
 
   const onCreate = async (e) => {
@@ -73,6 +117,8 @@ export default function Communities() {
       setSuccess(`成功创建社区：${createName.trim()}`);
       setCreateName('');
       setCreateDesc('');
+      // 刷新社区列表
+      loadMyCommunities();
     } catch (err) {
       setError(err.message || '创建社区失败');
     } finally {
@@ -92,9 +138,25 @@ export default function Communities() {
       setSuccess('成功加入社区');
       setDashboardId(cid);
       setJoinId('');
-      setTimeout(() => setActiveTab(2), 500);
+      // 刷新社区列表
+      loadMyCommunities();
+      setTimeout(() => setActiveTab(3), 500);
     } catch (err) {
       setError(err.message || '加入社区失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadDashboardById = async (cid) => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await getCommunityDashboard(cid.toUpperCase());
+      setDashboard(res || null);
+    } catch (err) {
+      setDashboard(null);
+      setError(err.message || '加载社区看板失败');
     } finally {
       setLoading(false);
     }
@@ -103,18 +165,7 @@ export default function Communities() {
   const onLoadDashboard = async (e) => {
     e.preventDefault();
     if (!dashboardId.trim()) return;
-
-    setLoading(true);
-    clearMessages();
-    try {
-      const res = await getCommunityDashboard(dashboardId.trim().toUpperCase());
-      setDashboard(res || null);
-    } catch (err) {
-      setDashboard(null);
-      setError(err.message || '加载社区看板失败');
-    } finally {
-      setLoading(false);
-    }
+    await handleLoadDashboardById(dashboardId);
   };
 
   return (
@@ -142,6 +193,7 @@ export default function Communities() {
             variant="fullWidth"
             sx={{ '& .Mui-selected': { color: theme.palette.primary.main } }}
           >
+            <Tab icon={<PeopleIcon />} iconPosition="start" label="我的社区" />
             <Tab icon={<AddIcon />} iconPosition="start" label="创建社区" />
             <Tab icon={<JoinIcon />} iconPosition="start" label="加入社区" />
             <Tab icon={<DashboardIcon />} iconPosition="start" label="社区看板" />
@@ -149,7 +201,95 @@ export default function Communities() {
         </Box>
 
         <CardContent>
+          {/* 我的社区选项卡 */}
           <TabPanel value={activeTab} index={0}>
+            {loadingMyCommunities ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : myCommunities.length > 0 ? (
+              <Grid container spacing={2}>
+                {myCommunities.map((community) => (
+                  <Grid item xs={12} sm={6} key={community.community_id}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                            {community.name}
+                          </Typography>
+                          <Chip
+                            size="small"
+                            icon={<PeopleIcon fontSize="small" />}
+                            label={community.member_count}
+                            color="primary"
+                            variant="outlined"
+                          />
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {community.description || '暂无描述'}
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: 'monospace',
+                              bgcolor: 'grey.100',
+                              px: 1,
+                              py: 0.5,
+                              borderRadius: 1,
+                              flex: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            ID: {community.community_id}
+                          </Typography>
+                          <Tooltip title="复制社区ID">
+                            <IconButton
+                              size="small"
+                              onClick={() => copyToClipboard(community.community_id)}
+                            >
+                              <CopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          size="small"
+                          startIcon={<ViewIcon />}
+                          onClick={() => goToDashboard(community.community_id)}
+                        >
+                          查看看板
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'grey.50' }}>
+                <PeopleIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  您还没有加入任何社区
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  创建一个新社区或加入已有社区开始分享
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                  <Button variant="contained" onClick={() => setActiveTab(1)}>
+                    创建社区
+                  </Button>
+                  <Button variant="outlined" onClick={() => setActiveTab(2)}>
+                    加入社区
+                  </Button>
+                </Box>
+              </Paper>
+            )}
+          </TabPanel>
+
+          {/* 创建社区选项卡 */}
+          <TabPanel value={activeTab} index={1}>
             <Box component="form" onSubmit={onCreate} sx={{ maxWidth: 560, display: 'grid', gap: 2 }}>
               <TextField
                 label="社区名称"
@@ -170,14 +310,44 @@ export default function Communities() {
             </Box>
 
             {lastCreatedId && (
-              <Paper sx={{ mt: 3, p: 2, bgcolor: '#F8FAFC', border: '1px dashed #CBD5E1' }}>
-                <Typography variant="body2" sx={{ color: '#64748B' }}>新社区 ID</Typography>
-                <Typography sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{lastCreatedId}</Typography>
+              <Paper sx={{ mt: 3, p: 3, bgcolor: '#F0FDF4', border: '1px solid #86EFAC' }}>
+                <Typography variant="body2" sx={{ color: '#166534', mb: 1 }}>
+                  ✅ 社区创建成功！
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#64748B', mb: 1 }}>
+                  社区 ID（请复制分享给朋友）：
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      fontSize: '1.1rem',
+                      bgcolor: 'white',
+                      px: 2,
+                      py: 1,
+                      borderRadius: 1,
+                      border: '1px solid #CBD5E1',
+                      flex: 1,
+                    }}
+                  >
+                    {lastCreatedId}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<CopyIcon />}
+                    onClick={() => copyToClipboard(lastCreatedId)}
+                    sx={{ whiteSpace: 'nowrap' }}
+                  >
+                    复制 ID
+                  </Button>
+                </Box>
               </Paper>
             )}
           </TabPanel>
 
-          <TabPanel value={activeTab} index={1}>
+          {/* 加入社区选项卡 */}
+          <TabPanel value={activeTab} index={2}>
             <Box component="form" onSubmit={onJoin} sx={{ maxWidth: 560, display: 'grid', gap: 2 }}>
               <TextField
                 label="社区 ID"
@@ -192,7 +362,8 @@ export default function Communities() {
             </Box>
           </TabPanel>
 
-          <TabPanel value={activeTab} index={2}>
+          {/* 社区看板选项卡 */}
+          <TabPanel value={activeTab} index={3}>
             <Box component="form" onSubmit={onLoadDashboard} sx={{ maxWidth: 680, display: 'flex', gap: 2, mb: 3 }}>
               <TextField
                 label="社区 ID"
@@ -207,9 +378,9 @@ export default function Communities() {
 
             {dashboard && (
               <Box>
-                <Paper sx={{ p: 3, mb: 3, bgcolor: '#0F172A', color: '#fff' }}>
+                <Paper sx={{ p: 3, mb: 3, bgcolor: '#1a1a2e', color: '#fff' }}>
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>{dashboard.community_name}</Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.8 }}>ID: {dashboard.community_id}</Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>ID: {dashboard.community_id}</Typography>
                   <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mt: 2 }}>
                     <PeopleIcon fontSize="small" />
                     <Typography variant="body2">成员数：{dashboard.member_count}</Typography>
