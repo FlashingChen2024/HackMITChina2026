@@ -407,7 +407,7 @@ export default function Meals() {
             菜品视觉识别与卡路里点火
           </Typography>
           <Typography variant="body2" sx={{ mb: 2, color: '#64748B' }}>
-            流程对齐 API v4.4：按格口拍照后可点「AI 识菜」走 9.1 -> 9.2 回填食物库编码，再点「视觉确认挂载」调用 9.3；或直接手填名称与热量，使用「手动卡路里点火」调用 4.1。
+            流程对齐 API v4.4：按格口拍照后可点「AI 识菜」走 9.1 到 9.2 回填食物库编码，再点「视觉确认挂载」调用 9.3；或直接手填名称与热量，使用「手动卡路里点火」调用 4.1。
           </Typography>
 
           <Stack spacing={2}>
