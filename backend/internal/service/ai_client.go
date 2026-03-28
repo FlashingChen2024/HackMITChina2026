@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	defaultAITimeout = 30 * time.Second
+	defaultAITimeout      = 30 * time.Second
+	defaultAISystemPrompt = "你是 K-XYZ 云端营养师。请严格只输出 JSON 字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。"
 )
 
 type AIModelClientConfig struct {
@@ -55,6 +56,19 @@ func NewOpenAICompatibleClient(cfg AIModelClientConfig) (*OpenAICompatibleClient
 }
 
 func (c *OpenAICompatibleClient) Generate(ctx context.Context, prompt string) (string, error) {
+	return c.GenerateWithSystemPrompt(ctx, defaultAISystemPrompt, prompt)
+}
+
+func (c *OpenAICompatibleClient) GenerateWithSystemPrompt(
+	ctx context.Context,
+	systemPrompt string,
+	prompt string,
+) (string, error) {
+	systemPrompt = strings.TrimSpace(systemPrompt)
+	if systemPrompt == "" {
+		systemPrompt = defaultAISystemPrompt
+	}
+
 	endpoint, err := resolveChatCompletionsURL(c.baseURL)
 	if err != nil {
 		return "", fmt.Errorf("resolve ai endpoint: %w", err)
@@ -66,7 +80,7 @@ func (c *OpenAICompatibleClient) Generate(ctx context.Context, prompt string) (s
 		Messages: []chatMessage{
 			{
 				Role:    "system",
-				Content: "你是 K-XYZ 云端营养师。请严格只输出 JSON 字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。",
+				Content: systemPrompt,
 			},
 			{
 				Role:    "user",

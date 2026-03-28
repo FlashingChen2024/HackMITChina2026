@@ -65,3 +65,44 @@ func TestOpenAICompatibleClientGenerate(t *testing.T) {
 		t.Fatalf("unexpected request temperature: %v", requestBody["temperature"])
 	}
 }
+
+func TestOpenAICompatibleClientGenerateWithSystemPrompt(t *testing.T) {
+	var requestBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewOpenAICompatibleClient(AIModelClientConfig{
+		BaseURL: server.URL + "/v1",
+		Model:   "gpt-test",
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client failed: %v", err)
+	}
+
+	_, err = client.GenerateWithSystemPrompt(context.Background(), "system-demo", "prompt-demo")
+	if err != nil {
+		t.Fatalf("generate with system prompt failed: %v", err)
+	}
+
+	messages, ok := requestBody["messages"].([]any)
+	if !ok || len(messages) < 1 {
+		t.Fatalf("unexpected messages payload: %#v", requestBody["messages"])
+	}
+
+	systemMessage, ok := messages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected system message payload: %#v", messages[0])
+	}
+
+	if systemMessage["content"] != "system-demo" {
+		t.Fatalf("expected custom system prompt, got %v", systemMessage["content"])
+	}
+}
