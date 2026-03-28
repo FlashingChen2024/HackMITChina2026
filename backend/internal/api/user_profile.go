@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"kxyz-backend/internal/model"
 	"kxyz-backend/internal/service"
@@ -63,14 +64,7 @@ func (h *UserProfileHandler) Upsert(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "用户画像保存成功",
-		"profile": gin.H{
-			"user_id":   userID,
-			"height_cm": req.HeightCM,
-			"weight_kg": req.WeightKG,
-			"gender":    strings.TrimSpace(req.Gender),
-			"age":       req.Age,
-		},
+		"message": "画像保存成功",
 	})
 }
 
@@ -95,12 +89,11 @@ func (h *UserProfileHandler) Get(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"profile": gin.H{
-			"user_id":   profile.UserID,
-			"height_cm": profile.HeightCM,
-			"weight_kg": profile.WeightKG,
-			"gender":    profile.Gender,
-			"age":       profile.Age,
-		},
+		"user_id":    profile.UserID,
+		"gender":     profile.Gender,
+		"age":        profile.Age,
+		"height_cm":  profile.HeightCM,
+		"weight_kg":  profile.WeightKG,
+		"updated_at": profile.UpdatedAt.UTC().Format(time.RFC3339),
 	})
 }

@@ -82,8 +82,8 @@ func TestAIAdviceSuccess(t *testing.T) {
 	if payload["is_alert"] != false {
 		t.Fatalf("expected is_alert false, got %v", payload["is_alert"])
 	}
-	if payload["prompt"] != "prompt-demo" {
-		t.Fatalf("expected prompt field to echo built prompt, got %v", payload["prompt"])
+	if _, ok := payload["prompt"]; ok {
+		t.Fatalf("did not expect prompt field in API response, got %v", payload["prompt"])
 	}
 	if !strings.Contains(logBuffer.String(), "[AI_PROMPT]") || !strings.Contains(logBuffer.String(), "prompt-demo") {
 		t.Fatalf("expected prompt log output, got %q", logBuffer.String())

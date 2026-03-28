@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"kxyz-backend/internal/api"
 	"kxyz-backend/internal/model"
@@ -73,6 +74,17 @@ func TestUserProfileUpsertSuccess(t *testing.T) {
 	if svc.lastInput.HeightCM != 165 || svc.lastInput.WeightKG != 45.0 || svc.lastInput.Gender != "female" || svc.lastInput.Age != 18 {
 		t.Fatalf("unexpected upsert input: %+v", svc.lastInput)
 	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload["message"] != "画像保存成功" {
+		t.Fatalf("expected message=画像保存成功, got %v", payload["message"])
+	}
+	if _, ok := payload["profile"]; ok {
+		t.Fatalf("did not expect profile field in response: %v", payload)
+	}
 }
 
 func TestUserProfileGetNotFound(t *testing.T) {
@@ -102,11 +114,12 @@ func TestUserProfileGetSuccess(t *testing.T) {
 
 	svc := &fakeUserProfileService{
 		profile: model.UserProfile{
-			UserID:   "user-1",
-			HeightCM: 170,
-			WeightKG: 68.5,
-			Gender:   "male",
-			Age:      25,
+			UserID:    "user-1",
+			HeightCM:  170,
+			WeightKG:  68.5,
+			Gender:    "male",
+			Age:       25,
+			UpdatedAt: time.Date(2026, time.March, 27, 10, 0, 0, 0, time.UTC),
 		},
 	}
 	handler := api.NewUserProfileHandler(svc)
@@ -130,12 +143,15 @@ func TestUserProfileGetSuccess(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	profile, ok := payload["profile"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected profile object, got %v", payload["profile"])
+	if payload["user_id"] != "user-1" ||
+		payload["height_cm"] != float64(170) ||
+		payload["weight_kg"] != 68.5 ||
+		payload["gender"] != "male" ||
+		payload["age"] != float64(25) {
+		t.Fatalf("unexpected profile payload: %v", payload)
 	}
-	if profile["user_id"] != "user-1" || profile["height_cm"] != float64(170) || profile["weight_kg"] != 68.5 || profile["gender"] != "male" || profile["age"] != float64(25) {
-		t.Fatalf("unexpected profile payload: %v", profile)
+	if payload["updated_at"] != "2026-03-27T10:00:00Z" {
+		t.Fatalf("expected updated_at in RFC3339, got %v", payload["updated_at"])
 	}
 }
 
