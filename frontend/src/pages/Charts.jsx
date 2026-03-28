@@ -7,16 +7,16 @@ import { fetchMeals } from '../api/meals';
 import ChartBlock from '../components/ChartBlock';
 
 const CHART_LABELS = {
-  daily_trend: '日趋势',
-  weekly_comparison: '周对比',
-  waste_analysis: '浪费率分析',
-  speed_analysis: '用餐速度分析',
-  nutrition_pie: '营养摄入（卡路里占比）',
-  meal_times: '三餐用餐时长',
+  daily_trend: 'Daily Trend',
+  weekly_comparison: 'Weekly Comparison',
+  waste_analysis: 'Waste Analysis',
+  speed_analysis: 'Eating Speed Analysis',
+  nutrition_pie: 'Nutrition Intake (Calorie Ratio)',
+  meal_times: 'The duration of daily meals',
 };
 
 /**
- * 枚举起止日期内每一天（本地日历），含首尾。
+ * Enumerate each day in a date range (local calendar), inclusive.
  *
  * @param {string} startStr `YYYY-MM-DD`
  * @param {string} endStr `YYYY-MM-DD`
@@ -81,7 +81,7 @@ function formatWeekRangeLabel(weekMonday) {
 }
 
 /**
- * 按自然周汇总每日摄入量，得到「每周一根柱」。
+ * Aggregate daily intake by natural week to get one bar per week.
  *
  * @param {string} start_date
  * @param {string} end_date
@@ -109,7 +109,7 @@ function aggregateIntakeByCalendarWeek(start_date, end_date, intake) {
 }
 
 /**
- * 分页拉取 `/meals`，收集本地日期区间内的餐次。
+ * Fetch `/meals` page by page and collect meals within local date range.
  *
  * @param {string} startStr
  * @param {string} endStr
@@ -143,7 +143,7 @@ async function fetchMealsInLocalDateRange(startStr, endStr, maxPages = 100) {
 }
 
 /**
- * 用餐时长（分钟）：后端由结束时间与开始时间得到，对应 `duration_minutes`。
+ * Meal duration in minutes (`duration_minutes`) derived by backend end-start time.
  *
  * @param {{ duration_minutes?: number }} m
  * @returns {number | null}
@@ -155,7 +155,7 @@ function mealDurationMinutesFromRecord(m) {
 }
 
 /**
- * 按本地开餐时刻划入：早餐 5≤h&lt;11，午餐 11≤h&lt;15，晚餐（含午后与夜宵）其余时段。
+ * Slot by local start time: breakfast 5≤h<11, lunch 11≤h<15, dinner otherwise.
  *
  * @param {string} iso
  * @returns {'breakfast' | 'lunch' | 'dinner'}
@@ -168,7 +168,7 @@ function classifyThreeMealsLocal(iso) {
 }
 
 /**
- * 逐日三条序列：早餐 / 午餐 / 晚餐累计用餐时长（分钟）；同一时段多餐则时长相加。
+ * Three daily series: breakfast/lunch/dinner cumulative duration (minutes).
  *
  * @param {string} start_date
  * @param {string} end_date
@@ -217,7 +217,7 @@ function buildDailyThreeMealDurationSeries(start_date, end_date, meals) {
 }
 
 /**
- * 限制饼图扇区数量；`labels` 与 `values` 一一对应（可为日期或餐次标签）。
+ * Limit pie sectors; `labels` and `values` must align one-to-one.
  *
  * @param {string[]} labels
  * @param {number[]} values
@@ -230,26 +230,26 @@ function limitPieData(labels, values, maxItems = 7) {
     originalIndex: i
   })).filter(item => item.value > 0);
   
-  // 按值从大到小排序
+  // Sort descending by value.
   data.sort((a, b) => b.value - a.value);
   
   if (data.length <= maxItems) {
     return data;
   }
   
-  // 取前 maxItems-1 个，其余合并为"其他"
+  // Keep top maxItems-1 and merge the rest as "Other".
   const topItems = data.slice(0, maxItems - 1);
   const otherItems = data.slice(maxItems - 1);
   const otherValue = otherItems.reduce((sum, item) => sum + item.value, 0);
   
   return [
     ...topItems,
-    { name: '其他', value: Number(otherValue.toFixed(1)), isOther: true }
+    { name: 'Other', value: Number(otherValue.toFixed(1)), isOther: true }
   ];
 }
 
 /**
- * 用于饼图图例的「月-日 时:分」展示基名（本地时间）。
+ * Build pie legend labels using local "MM-DD HH:mm".
  *
  * @param {string} iso
  * @returns {string | null}
@@ -258,12 +258,12 @@ function mealCaloriePieDisplayBase(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const t = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const t = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${md} ${t}`;
 }
 
 /**
- * 按每餐 `total_meal_cal` 生成饼图输入（不用 statistics 按日汇总，避免同一天多餐合成一块）。
+ * Build pie data from each meal `total_meal_cal` (not daily-aggregated statistics).
  *
  * @param {Array<{ start_time: string, total_meal_cal?: number }>} meals
  * @param {number} maxSlices
@@ -282,7 +282,7 @@ function buildPerMealCaloriePieData(meals, maxSlices = 16) {
     let label;
     if (!base) {
       fallbackIdx += 1;
-      label = `餐次 ${fallbackIdx}`;
+      label = `Meal ${fallbackIdx}`;
     } else {
       const n = (baseCounts.get(base) || 0) + 1;
       baseCounts.set(base, n);
@@ -343,7 +343,7 @@ function useChartOption(chartType, start_date, end_date) {
               const lines = [`<strong>${ax}</strong>`];
               for (const p of params) {
                 const v = p.value;
-                const txt = typeof v === 'number' && Number.isFinite(v) ? `${v} 分钟` : '—';
+                const txt = typeof v === 'number' && Number.isFinite(v) ? `${v} min` : '—';
                 lines.push(`${p.marker}${p.seriesName}：${txt}`);
               }
               return lines.join('<br/>');
@@ -366,14 +366,14 @@ function useChartOption(chartType, start_date, end_date) {
           },
           yAxis: {
             type: 'value',
-            name: '分钟',
+            name: 'Minutes',
             nameTextStyle: { color: '#64748B' },
             splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } },
             axisLabel: { color: '#64748B' },
           },
           series: [
             {
-              name: '早餐',
+              name: 'Breakfast',
               type: 'line',
               data: breakfast,
               smooth: true,
@@ -382,7 +382,7 @@ function useChartOption(chartType, start_date, end_date) {
               areaStyle: { opacity: 0.1 },
             },
             {
-              name: '午餐',
+              name: 'Lunch',
               type: 'line',
               data: lunch,
               smooth: true,
@@ -391,7 +391,7 @@ function useChartOption(chartType, start_date, end_date) {
               areaStyle: { opacity: 0.1 },
             },
             {
-              name: '晚餐',
+              name: 'Dinner',
               type: 'line',
               data: dinner,
               smooth: true,
@@ -443,11 +443,11 @@ function useChartOption(chartType, start_date, end_date) {
       }
 
       const res = await fetchChartData({ start_date, end_date });
-      // 严格按照 API 文档解析响应
+      // Parse response strictly according to API docs.
       const root = res || {};
       const d = root.chart_data || {};
       
-      // API 返回的数据结构
+      // API response structure
       const dates = d.dates || [];
       const served = d.daily_served_g || [];
       const intake = d.daily_intake_g || [];
@@ -492,8 +492,8 @@ function useChartOption(chartType, start_date, end_date) {
           xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
           yAxis: { type: 'value', name: 'g', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } }, nameTextStyle: { color: '#64748B' } },
           series: [
-            { name: '打饭量', type: 'line', data: served, smooth: true, areaStyle: { opacity: 0.1 } },
-            { name: '摄入量', type: 'line', data: intake, smooth: true, areaStyle: { opacity: 0.1 } }
+            { name: 'Served', type: 'line', data: served, smooth: true, areaStyle: { opacity: 0.1 } },
+            { name: 'Intake', type: 'line', data: intake, smooth: true, areaStyle: { opacity: 0.1 } }
           ]
         });
       } else if (chartType === 'weekly_comparison') {
@@ -508,12 +508,12 @@ function useChartOption(chartType, start_date, end_date) {
           },
           yAxis: {
             type: 'value',
-            name: '周累计 (g)',
+            name: 'Weekly Total (g)',
             splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } },
             nameTextStyle: { color: '#64748B' },
           },
           series: [{
-            name: '周摄入量',
+            name: 'Weekly Intake',
             type: 'bar',
             data: weeklyIntake,
             itemStyle: { borderRadius: [4, 4, 0, 0] },
@@ -529,7 +529,7 @@ function useChartOption(chartType, start_date, end_date) {
           color: ['#EF4444'],
           xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
           yAxis: { type: 'value', name: 'g', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
-          series: [{ name: '浪费量', type: 'line', data: waste, smooth: true, areaStyle: { opacity: 0.1 } }]
+          series: [{ name: 'Waste', type: 'line', data: waste, smooth: true, areaStyle: { opacity: 0.1 } }]
         });
       } else if (chartType === 'speed_analysis') {
         setOption({
@@ -537,7 +537,7 @@ function useChartOption(chartType, start_date, end_date) {
           color: ['#F59E0B'],
           xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
           yAxis: { type: 'value', name: 'g/min', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
-          series: [{ name: '平均速度', type: 'line', data: speeds, smooth: true }]
+          series: [{ name: 'Average Speed', type: 'line', data: speeds, smooth: true }]
         });
       } else {
         setOption({});
@@ -568,10 +568,10 @@ export default function Charts() {
   const [end_date, setEnd_date] = useState(() => new Date().toISOString().slice(0, 10));
   const [dateError, setDateError] = useState('');
 
-  // 验证日期范围
+  // Validate date range
   const validateDates = (start, end) => {
     if (start && end && new Date(start) > new Date(end)) {
-      setDateError('结束日期不能早于开始日期');
+      setDateError('End date cannot be earlier than start date.');
       return false;
     }
     setDateError('');
@@ -594,12 +594,12 @@ export default function Charts() {
     <Box sx={{ pb: 4 }}>
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, mb: 4, gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>健康数据看板</Typography>
-          <Typography variant="body1" sx={{ color: '#64748B' }}>基于您的历史就餐记录生成的多维度分析</Typography>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>Health Dashboard</Typography>
+          <Typography variant="body1" sx={{ color: '#64748B' }}>Multi-dimensional analytics based on your meal history.</Typography>
         </Box>
         {currentUser && (
           <Chip 
-            label={`用户: ${currentUser.username}`} 
+            label={`User: ${currentUser.username}`} 
             color="primary" 
             variant="outlined" 
             sx={{ fontWeight: 600, bgcolor: 'rgba(0,191,165,0.08)', border: 'none' }} 
@@ -612,23 +612,23 @@ export default function Charts() {
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'flex-start' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#64748B', mt: 1 }}>
               <DateIcon />
-              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>选择时间范围</Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Select Date Range</Typography>
             </Box>
             <TextField
               type="date"
               size="small"
-              label="开始日期"
+              label="Start Date"
               value={start_date}
               onChange={handleStartDateChange}
               error={!!dateError}
               sx={{ width: { xs: '100%', sm: 180 } }}
               InputLabelProps={{ shrink: true }}
             />
-            <Typography sx={{ color: '#94A3B8', mt: 1, display: { xs: 'none', sm: 'block' } }}>至</Typography>
+            <Typography sx={{ color: '#94A3B8', mt: 1, display: { xs: 'none', sm: 'block' } }}>to</Typography>
             <TextField
               type="date"
               size="small"
-              label="结束日期"
+              label="End Date"
               value={end_date}
               onChange={handleEndDateChange}
               error={!!dateError}
@@ -669,18 +669,18 @@ function ChartSection({ chartType, start_date, end_date }) {
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B' }}>{CHART_LABELS[chartType]}</Typography>
             {chartType === 'meal_times' && (
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mt: 0.5 }}>
-                与日趋势相同为按日折线。每餐时长为<strong>结束时间 − 开始时间</strong>（分钟，对应记录中的 duration_minutes）。
-                按<strong>本地开餐时刻</strong>划入：早餐 5:00–11:00、午餐 11:00–15:00、晚餐为其余时段；同一时段多餐则<strong>时长累加</strong>。
+                This chart is also daily. Meal duration is <strong>end time - start time</strong> in minutes (`duration_minutes`).
+                Meals are bucketed by <strong>local start time</strong>: breakfast 5:00-11:00, lunch 11:00-15:00, dinner otherwise; multiple meals in one bucket are <strong>summed</strong>.
               </Typography>
             )}
             {chartType === 'nutrition_pie' && (
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mt: 0.5 }}>
-                每一扇区对应<strong>一餐</strong>的累计卡路里（接口字段 total_meal_cal），与云端统计按<strong>自然日</strong>汇总不同；同一天多餐会显示为多块。
-                餐次过多时合并为「其他」；分页未拉全则可能漏餐。
+                Each sector maps to <strong>one meal</strong>'s total calories (`total_meal_cal`), unlike cloud daily aggregation by <strong>calendar day</strong>.
+                Too many meals are merged into <strong>Other</strong>; incomplete pagination may miss meals.
               </Typography>
             )}
           </Box>
-          <Tooltip title="重新加载">
+          <Tooltip title="Reload">
             <IconButton onClick={load} disabled={loading} size="small" sx={{ bgcolor: 'rgba(0,0,0,0.04)' }}>
               <RefreshIcon fontSize="small" sx={{ color: '#64748B' }} />
             </IconButton>
@@ -690,10 +690,10 @@ function ChartSection({ chartType, start_date, end_date }) {
         {!loading && !error && isEmpty && (
           <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
             {chartType === 'meal_times'
-              ? '所选日期范围内无有效数据：无就餐记录、duration_minutes 为空，或分页未覆盖全部历史。'
+              ? 'No valid data in selected range: no meals, missing duration_minutes, or incomplete pagination.'
               : chartType === 'nutrition_pie'
-                ? '所选日期范围内无有效数据：无就餐记录、total_meal_cal 为 0 或未返回，或分页未覆盖全部历史。'
-                : '当前时间范围内暂无数据。'}
+                ? 'No valid data in selected range: no meals, total_meal_cal is 0/missing, or incomplete pagination.'
+                : 'No data in the current time range.'}
           </Alert>
         )}
         <Box sx={{ width: '100%', height: 320, opacity: (loading || isEmpty) ? 0.3 : 1, transition: 'opacity 0.3s' }}>

@@ -36,13 +36,13 @@ export default function Layout() {
   const [anchorEl, setAnchorEl] = useState(null);
 
   const navItems = [
-    { to: '/', label: '首页', icon: <HomeIcon /> },
-    { to: '/charts', label: '健康图表', icon: <ChartIcon /> },
-    { to: '/meals', label: '就餐记录', icon: <MealIcon /> },
-    { to: '/devices', label: '设备管理', icon: <DeviceIcon /> },
-    { to: '/alerts', label: '预警功能', icon: <AlertIcon /> },
-    { to: '/communities', label: '圈子社区', icon: <CommunityIcon /> },
-    { to: '/profile', label: '个人信息', icon: <ProfileIcon /> }
+    { to: '/', label: 'Home', icon: <HomeIcon /> },
+    { to: '/charts', label: 'Health Charts', icon: <ChartIcon /> },
+    { to: '/meals', label: 'Meal Records', icon: <MealIcon /> },
+    { to: '/devices', label: 'Devices', icon: <DeviceIcon /> },
+    { to: '/alerts', label: 'Alerts', icon: <AlertIcon /> },
+    { to: '/communities', label: 'Communities', icon: <CommunityIcon /> },
+    { to: '/profile', label: 'Profile', icon: <ProfileIcon /> }
   ];
 
   const handleLogout = () => {
@@ -65,7 +65,7 @@ export default function Layout() {
           color: 'white', fontWeight: 900, fontSize: 20
         }}>K</Box>
         <Typography variant="h6" sx={{ fontWeight: 800, color: '#1E293B', letterSpacing: '-0.5px' }}>
-          智能餐盒
+          Smart Lunchbox
         </Typography>
       </Box>
       <List sx={{ px: 2, flex: 1 }}>
@@ -117,7 +117,7 @@ export default function Layout() {
           </Avatar>
           <Box sx={{ flex: 1, overflow: 'hidden' }}>
             <Typography variant="subtitle2" noWrap sx={{ fontWeight: 700, color: '#1E293B' }}>
-              {currentUser?.username || '未登录'}
+              {currentUser?.username || 'Not Signed In'}
             </Typography>
             <Typography variant="caption" noWrap sx={{ color: '#64748B' }}>
               ID: {currentUser?.userId?.substring(0, 6) || '---'}
@@ -130,7 +130,7 @@ export default function Layout() {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
-      {/* 桌面端侧边栏 */}
+      {/* Desktop sidebar */}
       {!isMobile && (
         <Box component="nav" sx={{ width: DRAWER_WIDTH, flexShrink: 0 }}>
           <Drawer
@@ -150,7 +150,7 @@ export default function Layout() {
         </Box>
       )}
 
-      {/* 移动端侧边栏 */}
+      {/* Mobile sidebar */}
       {isMobile && (
         <Drawer
           variant="temporary"
@@ -166,9 +166,9 @@ export default function Layout() {
         </Drawer>
       )}
 
-      {/* 主内容区 */}
+      {/* Main content area */}
       <Box component="main" sx={{ flexGrow: 1, width: { md: `calc(100% - ${DRAWER_WIDTH}px)` }, pb: { xs: 10, md: 4 } }}>
-        {/* 顶部导航 */}
+        {/* Top navigation */}
         <AppBar 
           position="sticky" 
           elevation={0}
@@ -185,10 +185,10 @@ export default function Layout() {
                 <MenuIcon />
               </IconButton>
             )}
-            {!isMobile && <Box />} {/* 占位 */}
+            {!isMobile && <Box />} {/* Spacer */}
             
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Tooltip title="账号设置">
+              <Tooltip title="Account Settings">
                 <IconButton onClick={handleMenuOpen} size="small" sx={{ p: 0.5, border: '2px solid transparent', '&:hover': { borderColor: theme.palette.primary.main } }}>
                   <Avatar sx={{ width: 36, height: 36, bgcolor: theme.palette.primary.main, fontSize: '1rem', fontWeight: 'bold' }}>
                     {currentUser?.username?.[0]?.toUpperCase() || 'U'}
@@ -213,26 +213,26 @@ export default function Layout() {
                 }}
               >
                 <Box sx={{ px: 2, py: 1.5 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{currentUser?.username || '游客'}</Typography>
-                  <Typography variant="body2" color="text.secondary">系统已就绪</Typography>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{currentUser?.username || 'Guest'}</Typography>
+                  <Typography variant="body2" color="text.secondary">System Ready</Typography>
                 </Box>
                 <Divider />
                 <MenuItem onClick={handleLogout} sx={{ py: 1.5, color: 'error.main' }}>
                   <ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon>
-                  退出登录
+                  Sign Out
                 </MenuItem>
               </Menu>
             </Box>
           </Toolbar>
         </AppBar>
 
-        {/* 页面路由出口 */}
+        {/* Nested route outlet */}
         <Container maxWidth="xl" sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
           <Outlet />
         </Container>
       </Box>
 
-      {/* 移动端底部导航 */}
+      {/* Mobile bottom navigation */}
       {isMobile && (
         <Box sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1100 }}>
           <Box sx={{ 

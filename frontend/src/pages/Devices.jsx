@@ -26,7 +26,7 @@ export default function Devices() {
     setError(null);
     try {
       const res = await listBindings();
-      // 兼容两种可能的数据结构
+      // Support two possible payload structures.
       const items = res.devices || res.items || [];
       const normalizedList = items.map(item => 
         typeof item === 'string' ? { device_id: item } : item
@@ -83,10 +83,10 @@ export default function Devices() {
     <Box sx={{ pb: 4, maxWidth: 1000, mx: 'auto' }}>
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 4, gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>设备管理</Typography>
-          <Typography variant="body1" sx={{ color: '#64748B' }}>绑定并管理您的智能餐盒硬件</Typography>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>Device Management</Typography>
+          <Typography variant="body1" sx={{ color: '#64748B' }}>Bind and manage your smart lunchbox hardware.</Typography>
         </Box>
-        <Tooltip title="刷新列表">
+        <Tooltip title="Refresh list">
           <IconButton onClick={loadList} disabled={loading} sx={{ bgcolor: 'rgba(0,0,0,0.04)' }}>
             <RefreshIcon sx={{ color: '#64748B' }} />
           </IconButton>
@@ -107,13 +107,13 @@ export default function Devices() {
           <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }}>
             <AddIcon />
           </Avatar>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>添加新设备</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>Add New Device</Typography>
         </Box>
         <CardContent sx={{ p: { xs: 3, md: 4 } }}>
           <Box component="form" onSubmit={handleBind} sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
             <TextField
               fullWidth
-              placeholder="请输入设备 ID（例如：ESP32_A1B2C3）"
+              placeholder="Enter device ID (e.g. ESP32_A1B2C3)"
               value={device_id}
               onChange={(e) => setDevice_id(e.target.value)}
               variant="outlined"
@@ -126,20 +126,21 @@ export default function Devices() {
               type="submit"
               variant="contained"
               disabled={loading || !device_id.trim()}
-              sx={{ 
+              sx={{
                 minWidth: 140, height: 56,
                 background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+                color: '#fff',
                 '&:hover': { background: 'linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)' }
               }}
             >
-              {loading ? <CircularProgress size={24} color="inherit" /> : '绑定设备'}
+              {loading ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : 'Bind Device'}
             </Button>
           </Box>
         </CardContent>
       </Card>
 
       <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: '#1E293B' }}>
-        已绑定的设备 {list.length > 0 && `(${list.length})`}
+        Connected Devices {list.length > 0 && `(${list.length})`}
       </Typography>
 
       {loading && !list.length ? (
@@ -177,7 +178,7 @@ export default function Devices() {
                     onClick={() => handleUnbindClick(item.device_id)}
                     sx={{ borderRadius: 2, mt: 'auto' }}
                   >
-                    解除绑定
+                    Unbind
                   </Button>
                 </CardContent>
               </Card>
@@ -190,27 +191,27 @@ export default function Devices() {
             <Avatar sx={{ width: 64, height: 64, mx: 'auto', mb: 2, bgcolor: '#F1F5F9', color: '#94A3B8' }}>
               <DeviceIcon fontSize="large" />
             </Avatar>
-            <Typography variant="h6" sx={{ color: '#475569', mb: 1 }}>暂无绑定设备</Typography>
-            <Typography variant="body2" sx={{ color: '#94A3B8' }}>在上方输入设备 ID 以添加您的智能餐盒</Typography>
+            <Typography variant="h6" sx={{ color: '#475569', mb: 1 }}>No connected devices</Typography>
+            <Typography variant="body2" sx={{ color: '#94A3B8' }}>Enter a device ID above to add your smart lunchbox.</Typography>
           </CardContent>
         </Card>
       )}
 
-      {/* 解绑确认弹窗 */}
+      {/* Unbind confirmation dialog */}
       <Dialog
         open={deleteDialogOpen}
         onClose={() => !loading && setDeleteDialogOpen(false)}
         PaperProps={{ sx: { borderRadius: 4, p: 1 } }}
       >
-        <DialogTitle sx={{ fontWeight: 800, color: '#1E293B' }}>确认解除绑定？</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: '#1E293B' }}>Confirm unbind?</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: '#64748B' }}>
-            您确定要解除设备 <strong style={{ color: '#1E293B' }}>{deleteItemId}</strong> 的绑定吗？解绑后您将无法接收该设备的实时数据。
+            Are you sure you want to unbind device <strong style={{ color: '#1E293B' }}>{deleteItemId}</strong>? You will no longer receive its real-time data.
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setDeleteDialogOpen(false)} disabled={loading} sx={{ color: '#64748B' }}>
-            取消
+            Cancel
           </Button>
           <Button 
             onClick={handleUnbindConfirm} 
@@ -219,7 +220,7 @@ export default function Devices() {
             disabled={loading}
             sx={{ borderRadius: 2, px: 3 }}
           >
-            {loading ? <CircularProgress size={20} color="inherit" /> : '确认解除'}
+            {loading ? <CircularProgress size={20} color="inherit" /> : 'Confirm Unbind'}
           </Button>
         </DialogActions>
       </Dialog>
