@@ -73,8 +73,8 @@ func TestDeviceBindSuccess(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if payload["message"] != "绑定成功" {
-		t.Fatalf("expected message=绑定成功, got %v", payload["message"])
+	if payload["message"] != "device bind success" {
+		t.Fatalf("expected message=device bind success, got %v", payload["message"])
 	}
 	if payload["device_id"] != "ESP32_A1B2C3" {
 		t.Fatalf("expected uppercase device_id, got %v", payload["device_id"])

@@ -54,7 +54,7 @@ func (h *DeviceBindingHandler) Bind(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":   "绑定成功",
+		"message":   "device bind success",
 		"device_id": strings.ToUpper(strings.TrimSpace(req.DeviceID)),
 	})
 }
