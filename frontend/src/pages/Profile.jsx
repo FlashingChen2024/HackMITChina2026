@@ -1,322 +1,314 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
   Card,
   CardContent,
-  TextField,
-  Button,
-  Alert,
-  CircularProgress,
-  Stack,
-  MenuItem,
+  Avatar,
   Grid,
   Chip,
+  Button,
+  TextField,
+  MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
   Divider,
-  Switch,
-  FormControlLabel,
+  CircularProgress,
+  Alert,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
+  Edit as EditIcon,
   Save as SaveIcon,
   Refresh as RefreshIcon,
-  MonitorHeart as HealthIcon,
-  Notifications as AlertIcon,
+  DevicesOther as DeviceIcon,
+  CheckCircle as OnlineIcon,
+  Cancel as OfflineIcon,
+  TrendingUp as TrendIcon,
+  Lightbulb as BulbIcon,
+  CalendarToday as CalendarIcon,
 } from '@mui/icons-material';
-import { fetchProfile, updateProfile, normalizeProfilePayload, fetchAlertSetting, updateAlertSetting } from '../api/profile';
+import * as echarts from 'echarts';
+import { fetchProfile, updateProfile, normalizeProfilePayload } from '../api/profile';
+import { fetchChartData } from '../api/charts';
+import { fetchAiAdvice } from '../api/report';
+import { listBindings } from '../api/devices';
 import { getCurrentUser } from '../api/client';
 
 const GENDER_OPTIONS = [
-  { value: 'male', label: '男' },
-  { value: 'female', label: '女' },
-  { value: 'other', label: '其他' },
+  { value: 'male', label: '男', icon: '♂' },
+  { value: 'female', label: '女', icon: '♀' },
+  { value: 'other', label: '其他', icon: '○' },
 ];
 
-const EMPTY_FORM = {
-  gender: 'male',
-  age: '',
-  height_cm: '',
-  weight_kg: '',
+const GENDER_LABEL = {
+  male: '男',
+  female: '女',
+  other: '其他',
 };
 
-/**
- * 合并两次接口结果：新响应里缺字段时保留上一次档案（避免 GET 空壳覆盖保存后的乐观更新）。
- *
- * @param {Record<string, unknown> | null} prev
- * @param {ReturnType<typeof normalizeProfilePayload>} n
- * @param {string | undefined} uid
- * @returns {{ user_id: string, gender?: string, age: number | null, height_cm: number | null, weight_kg: number | null, updated_at?: string } | null}
- */
-function mergeProfileState(prev, n, uid) {
-  const base = prev && prev.user_id
-    ? prev
-    : null;
-  if (!base) {
-    const user_id = String(n.user_id || uid || '');
-    if (!user_id) return null;
-    return {
-      user_id,
-      gender: typeof n.gender === 'string' && n.gender ? n.gender : undefined,
-      age: n.age != null && !Number.isNaN(n.age) ? n.age : null,
-      height_cm: n.height_cm != null && !Number.isNaN(n.height_cm) ? n.height_cm : null,
-      weight_kg: n.weight_kg != null && !Number.isNaN(n.weight_kg) ? n.weight_kg : null,
-      ...(n.updated_at ? { updated_at: n.updated_at } : {}),
-    };
-  }
-  return {
-    user_id: String(n.user_id || base.user_id || uid || ''),
-    gender: (typeof n.gender === 'string' && n.gender) ? n.gender : base.gender,
-    age: (n.age != null && !Number.isNaN(n.age)) ? n.age : (base.age ?? null),
-    height_cm: (n.height_cm != null && !Number.isNaN(n.height_cm)) ? n.height_cm : (base.height_cm ?? null),
-    weight_kg: (n.weight_kg != null && !Number.isNaN(n.weight_kg)) ? n.weight_kg : (base.weight_kg ?? null),
-    updated_at: n.updated_at || base.updated_at,
-  };
-}
-
-/**
- * 使用 Mifflin-St Jeor 公式估算基础代谢率（kcal/天），仅作前端展示参考。
- *
- * @param {{ gender: string, age: number, height_cm: number, weight_kg: number }} p
- * @returns {number | null}
- */
-function estimateBmr(p) {
-  const { gender, age, height_cm, weight_kg } = p;
-  if (
-    age == null || Number.isNaN(age) || age <= 0
-    || height_cm == null || Number.isNaN(height_cm) || height_cm <= 0
-    || weight_kg == null || Number.isNaN(weight_kg) || weight_kg <= 0
-  ) {
-    return null;
-  }
+// 计算BMR（基础代谢率）
+function calcBMR({ gender, age, height_cm, weight_kg }) {
+  if (!age || !height_cm || !weight_kg) return null;
   const base = 10 * weight_kg + 6.25 * height_cm - 5 * age;
   if (gender === 'female') return Math.round(base - 161);
   if (gender === 'male') return Math.round(base + 5);
   return Math.round(base - 78);
 }
 
-/**
- * 判断是否为「画像不存在」类错误（404 或业务码）。
- *
- * @param {unknown} err
- * @returns {boolean}
- */
-function isProfileNotFoundError(err) {
-  if (!(err instanceof Error)) return false;
-  const m = err.message || '';
-  return m.includes('404')
-    || m.includes('profile_not_found')
-    || m.includes('尚未填写');
+// 计算BMI
+function calcBMI(height_cm, weight_kg) {
+  if (!height_cm || !weight_kg) return null;
+  const height_m = height_cm / 100;
+  return (weight_kg / (height_m * height_m)).toFixed(1);
+}
+
+// 获取日期范围
+function getDateRange(type) {
+  const end = new Date();
+  const start = new Date();
+  if (type === 'day') {
+    start.setDate(end.getDate() - 7); // 最近7天
+  } else {
+    start.setMonth(end.getMonth() - 6); // 最近6个月
+  }
+  return {
+    start: start.toISOString().split('T')[0],
+    end: end.toISOString().split('T')[0],
+  };
 }
 
 export default function Profile() {
   const currentUser = getCurrentUser();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  // 用户数据
+  const [profile, setProfile] = useState(null);
+  const [devices, setDevices] = useState([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    gender: 'male',
+    age: '',
+    height_cm: '',
+    weight_kg: '',
+  });
   const [saving, setSaving] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const [saveError, setSaveError] = useState('');
-  const [saveOk, setSaveOk] = useState('');
-  const [serverProfile, setServerProfile] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [alertLoading, setAlertLoading] = useState(false);
-  const [alertSaving, setAlertSaving] = useState(false);
-  const [alertError, setAlertError] = useState('');
-  const [alertOk, setAlertOk] = useState('');
-  const [alertForm, setAlertForm] = useState({ email: '', enabled: false });
 
-  /**
-   * 将接口数据写入 `serverProfile`；`merge=true` 时与当前状态合并，避免空 GET 冲掉已保存数据。
-   *
-   * @param {Record<string, unknown>} data
-   * @param {{ merge?: boolean }} [options]
-   * @returns {void}
-   */
-  const applyServerProfileData = useCallback((data, options = {}) => {
-    const { merge = false } = options;
-    const n = normalizeProfilePayload(data);
-    const me = getCurrentUser();
-    const uid = me?.userId ?? me?.user_id;
+  // 图表数据
+  const [chartType, setChartType] = useState('day'); // 'day' | 'month'
+  const [chartData, setChartData] = useState([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const chartRef = useRef(null);
+  const chartInstanceRef = useRef(null);
 
-    setServerProfile((prev) => {
-      if (merge) {
-        const merged = mergeProfileState(prev, n, uid);
-        return merged;
-      }
-      const user_id = String(n.user_id || uid || '');
-      if (!user_id) return null;
-      return {
-        user_id,
-        gender: typeof n.gender === 'string' && n.gender ? n.gender : undefined,
-        age: n.age != null && !Number.isNaN(n.age) ? n.age : null,
-        height_cm: n.height_cm != null && !Number.isNaN(n.height_cm) ? n.height_cm : null,
-        weight_kg: n.weight_kg != null && !Number.isNaN(n.weight_kg) ? n.weight_kg : null,
-        ...(n.updated_at ? { updated_at: n.updated_at } : {}),
-      };
-    });
-  }, []);
+  // AI建议
+  const [aiAdvice, setAiAdvice] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
-  /** 左侧档案为单一数据源，右侧表单与其同步（用户正在编辑时不会反复覆盖，仅随 serverProfile 引用变化更新）。 */
-  useEffect(() => {
-    if (!serverProfile?.user_id) {
-      setForm({ ...EMPTY_FORM });
-      return;
-    }
-    setForm({
-      gender: serverProfile.gender && ['male', 'female', 'other'].includes(serverProfile.gender)
-        ? serverProfile.gender
-        : 'male',
-      age: serverProfile.age != null && !Number.isNaN(serverProfile.age) ? String(serverProfile.age) : '',
-      height_cm: serverProfile.height_cm != null && !Number.isNaN(serverProfile.height_cm)
-        ? String(serverProfile.height_cm)
-        : '',
-      weight_kg: serverProfile.weight_kg != null && !Number.isNaN(serverProfile.weight_kg)
-        ? String(serverProfile.weight_kg)
-        : '',
-    });
-  }, [serverProfile]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError('');
+  // 加载所有数据
+  const loadData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    setError('');
     try {
-      const data = await fetchProfile();
-      applyServerProfileData(data);
-    } catch (e) {
-      if (isProfileNotFoundError(e)) {
-        const uid = getCurrentUser()?.userId ?? getCurrentUser()?.user_id;
-        if (uid) {
-          setServerProfile({
-            user_id: String(uid),
-            gender: undefined,
-            age: null,
-            height_cm: null,
-            weight_kg: null,
-          });
-        } else {
-          setServerProfile(null);
-        }
-      } else {
-        setLoadError(e instanceof Error ? e.message : '加载失败');
+      const [profileRes, devicesRes] = await Promise.all([
+        fetchProfile().catch(() => null),
+        listBindings(),
+      ]);
+
+      if (profileRes) {
+        const normalized = normalizeProfilePayload(profileRes);
+        setProfile(normalized);
+        setEditForm({
+          gender: normalized.gender || 'male',
+          age: normalized.age?.toString() || '',
+          height_cm: normalized.height_cm?.toString() || '',
+          weight_kg: normalized.weight_kg?.toString() || '',
+        });
       }
+
+      setDevices(devicesRes.devices || []);
+    } catch (err) {
+      setError(err.message || '加载数据失败');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [applyServerProfileData]);
+  }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const loadAlertSetting = useCallback(async () => {
-    setAlertLoading(true);
-    setAlertError('');
+  // 加载图表数据
+  const loadChartData = useCallback(async () => {
+    setChartLoading(true);
     try {
-      const data = await fetchAlertSetting();
-      setAlertForm({
-        email: data.email || '',
-        enabled: data.enabled || false,
-      });
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('404')) {
-        setAlertForm({ email: '', enabled: false });
-      } else {
-        setAlertError(e instanceof Error ? e.message : '加载告警设置失败');
-      }
+      const { start, end } = getDateRange(chartType);
+      const res = await fetchChartData({ start_date: start, end_date: end });
+      
+      // 转换为图表格式
+      const data = res.chart_data?.dates?.map((date, i) => ({
+        date,
+        calories: res.chart_data.daily_calories?.[i] || 0,
+        intake: res.chart_data.daily_intake_g?.[i] || 0,
+        served: res.chart_data.daily_served_g?.[i] || 0,
+        speed: res.chart_data.avg_speed_g_per_min?.[i] || 0,
+      })) || [];
+      
+      setChartData(data);
+    } catch (err) {
+      console.error('加载图表失败:', err);
     } finally {
-      setAlertLoading(false);
+      setChartLoading(false);
+    }
+  }, [chartType]);
+
+  // 加载AI建议
+  const loadAiAdvice = useCallback(async () => {
+    setAiLoading(true);
+    try {
+      const [dailyAlert, nextMeal] = await Promise.all([
+        fetchAiAdvice({ type: 'daily_alert' }).catch(() => null),
+        fetchAiAdvice({ type: 'next_meal' }).catch(() => null),
+      ]);
+      setAiAdvice({
+        daily: dailyAlert,
+        next: nextMeal,
+      });
+    } catch (err) {
+      console.error('加载AI建议失败:', err);
+    } finally {
+      setAiLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadAlertSetting();
-  }, [loadAlertSetting]);
+    loadData();
+  }, [loadData]);
 
-  const handleAlertSave = async () => {
-    setAlertError('');
-    setAlertOk('');
-    if (alertForm.enabled && !alertForm.email.trim()) {
-      setAlertError('启用告警时必须填写邮箱地址');
-      return;
+  useEffect(() => {
+    if (!loading) {
+      loadChartData();
+      loadAiAdvice();
     }
-    setAlertSaving(true);
-    try {
-      await updateAlertSetting({
-        email: alertForm.email.trim(),
-        enabled: alertForm.enabled,
-      });
-      setAlertOk('告警设置保存成功');
-    } catch (e) {
-      setAlertError(e instanceof Error ? e.message : '保存失败');
-    } finally {
-      setAlertSaving(false);
-    }
-  };
+  }, [loading, chartType, loadChartData, loadAiAdvice]);
 
-  const bmrPreview = useMemo(() => {
-    const age = parseInt(form.age, 10);
-    const height_cm = parseFloat(form.height_cm);
-    const weight_kg = parseFloat(form.weight_kg);
-    return estimateBmr({
-      gender: form.gender,
-      age,
-      height_cm,
-      weight_kg,
-    });
-  }, [form]);
+  // 初始化 ECharts
+  useEffect(() => {
+    if (chartRef.current && !chartInstanceRef.current) {
+      chartInstanceRef.current = echarts.init(chartRef.current);
+    }
+    return () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.dispose();
+        chartInstanceRef.current = null;
+      }
+    };
+  }, []);
 
-  /**
-   * @returns {Promise<void>}
-   */
-  const handleSave = async () => {
-    setSaveError('');
-    setSaveOk('');
-    const age = parseInt(form.age, 10);
-    const height_cm = parseFloat(form.height_cm);
-    const weight_kg = parseFloat(form.weight_kg);
-    if (!['male', 'female', 'other'].includes(form.gender)) {
-      setSaveError('请选择性别');
-      return;
+  // 更新图表数据
+  useEffect(() => {
+    if (chartInstanceRef.current && chartData.length > 0) {
+      const option = {
+        grid: { top: 40, right: 20, bottom: 20, left: 50, containLabel: true },
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: 'white',
+          borderColor: '#E2E8F0',
+          borderWidth: 1,
+          textStyle: { color: '#1E293B' },
+        },
+        legend: { data: ['卡路里 (kcal)', '摄入量 (g)'], top: 0 },
+        xAxis: {
+          type: 'category',
+          data: chartData.map(d => d.date),
+          axisLine: { lineStyle: { color: '#E2E8F0' } },
+          axisLabel: { color: '#64748B', fontSize: 11 },
+        },
+        yAxis: {
+          type: 'value',
+          axisLine: { show: false },
+          splitLine: { lineStyle: { color: '#E2E8F0', type: 'dashed' } },
+          axisLabel: { color: '#64748B', fontSize: 11 },
+        },
+        series: [
+          {
+            name: '卡路里 (kcal)',
+            type: 'line',
+            data: chartData.map(d => d.calories),
+            smooth: true,
+            symbol: 'circle',
+            symbolSize: 6,
+            lineStyle: { color: '#00BFA5', width: 2 },
+            itemStyle: { color: '#00BFA5' },
+          },
+          {
+            name: '摄入量 (g)',
+            type: 'line',
+            data: chartData.map(d => d.intake),
+            smooth: true,
+            symbol: 'circle',
+            symbolSize: 6,
+            lineStyle: { color: '#3B82F6', width: 2 },
+            itemStyle: { color: '#3B82F6' },
+          },
+        ],
+      };
+      chartInstanceRef.current.setOption(option);
     }
-    if (Number.isNaN(age) || age < 1 || age > 120) {
-      setSaveError('请输入有效年龄（1–120）');
-      return;
-    }
-    if (Number.isNaN(height_cm) || height_cm < 50 || height_cm > 260) {
-      setSaveError('请输入有效身高 cm（50–260）');
-      return;
-    }
-    if (Number.isNaN(weight_kg) || weight_kg < 20 || weight_kg > 300) {
-      setSaveError('请输入有效体重 kg（20–300）');
-      return;
-    }
+  }, [chartData]);
 
+  // 窗口大小变化时重新调整图表
+  useEffect(() => {
+    const handleResize = () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.resize();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // 保存个人数据
+  const handleSaveProfile = async () => {
     setSaving(true);
     try {
-      const res = await updateProfile({
-        gender: form.gender,
-        age,
-        height_cm,
-        weight_kg,
+      const payload = {
+        gender: editForm.gender,
+        age: parseInt(editForm.age, 10),
+        height_cm: parseFloat(editForm.height_cm),
+        weight_kg: parseFloat(editForm.weight_kg),
+      };
+      await updateProfile(payload);
+      setProfile({
+        ...profile,
+        ...payload,
+        user_id: profile?.user_id || currentUser?.userId,
       });
-      setSaveOk(res.message || '画像保存成功');
-      applyServerProfileData({
-        user_id: getCurrentUser()?.userId ?? getCurrentUser()?.user_id,
-        gender: form.gender,
-        age,
-        height_cm,
-        weight_kg,
-        updated_at: res.updated_at,
-      }, { merge: false });
-      try {
-        const fresh = await fetchProfile();
-        applyServerProfileData(fresh, { merge: true });
-      } catch {
-        /* 保留乐观更新 */
-      }
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : '保存失败');
+      setEditOpen(false);
+    } catch (err) {
+      setError(err.message || '保存失败');
     } finally {
       setSaving(false);
     }
   };
+
+  // 计算统计数据
+  const bmr = useMemo(() => calcBMR(profile || {}), [profile]);
+  const bmi = useMemo(() => calcBMI(profile?.height_cm, profile?.weight_kg), [profile]);
+
+  // BMI评级
+  const getBmiLevel = (bmi) => {
+    if (!bmi) return null;
+    const val = parseFloat(bmi);
+    if (val < 18.5) return { label: '偏瘦', color: '#F59E0B' };
+    if (val < 24) return { label: '正常', color: '#10B981' };
+    if (val < 28) return { label: '偏胖', color: '#F97316' };
+    return { label: '肥胖', color: '#EF4444' };
+  };
+  const bmiLevel = getBmiLevel(bmi);
 
   if (loading) {
     return (
@@ -327,249 +319,332 @@ export default function Profile() {
   }
 
   return (
-    <Box sx={{ pb: 4, maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 0.5 }}>
-            个人信息
-          </Typography>
-          <Typography variant="body2" sx={{ color: '#64748B' }}>
-            填写身高、体重等信息，为云端 AI 计算基础代谢与营养建议提供依据。
-          </Typography>
-        </Box>
-        <Button startIcon={<RefreshIcon />} variant="outlined" onClick={load} disabled={saving}>
-          刷新数据
-        </Button>
+    <Box sx={{ pb: 4 }}>
+      {/* 顶部标题 */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B' }}>
+          个人数据
+        </Typography>
+        <IconButton onClick={() => loadData(true)} disabled={refreshing}>
+          <RefreshIcon sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+        </IconButton>
       </Box>
 
-      {loadError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError('')}>
-          {loadError}
-        </Alert>
-      )}
-      {saveError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSaveError('')}>
-          {saveError}
-        </Alert>
-      )}
-      {saveOk && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSaveOk('')}>
-          {saveOk}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+          {error}
         </Alert>
       )}
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={5}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-                <HealthIcon color="primary" />
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  当前档案
+      {/* 第一行：三个信息卡 */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {/* 头像卡 */}
+        <Grid item xs={12} sm={4}>
+          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <Avatar
+                sx={{
+                  width: 80,
+                  height: 80,
+                  fontSize: '2rem',
+                  fontWeight: 'bold',
+                  bgcolor: 'primary.main',
+                  mb: 2,
+                  boxShadow: '0 4px 12px rgba(0, 191, 165, 0.3)',
+                }}
+              >
+                {currentUser?.username?.[0]?.toUpperCase() || 'U'}
+              </Avatar>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+                {currentUser?.username || '用户'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
+                ID: {currentUser?.userId?.slice(0, 8) || '---'}
+              </Typography>
+              <Chip
+                size="small"
+                label={GENDER_LABEL[profile?.gender] || '未设置性别'}
+                sx={{
+                  bgcolor: profile?.gender === 'female' ? '#FDF2F8' : profile?.gender === 'male' ? '#EFF6FF' : '#F3F4F6',
+                  color: profile?.gender === 'female' ? '#EC4899' : profile?.gender === 'male' ? '#3B82F6' : '#6B7280',
+                }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* 个人数据卡 */}
+        <Grid item xs={12} sm={4}>
+          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  健康数据
                 </Typography>
-              </Stack>
-              <Divider sx={{ mb: 2 }} />
-              {serverProfile ? (
-                <Stack spacing={1.5}>
-                  <Typography variant="body2" color="text.secondary">
-                    用户 ID
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                    {serverProfile.user_id || currentUser?.userId || currentUser?.user_id || '—'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
-                    性别
-                  </Typography>
-                  <Chip
-                    size="small"
-                    label={
-                      serverProfile.gender
-                        ? (GENDER_OPTIONS.find((g) => g.value === serverProfile.gender)?.label
-                          || serverProfile.gender)
-                        : '—'
-                    }
-                    sx={{ alignSelf: 'flex-start' }}
-                  />
-                  <Typography variant="body2" color="text.secondary">年龄</Typography>
-                  <Typography variant="body1">
-                    {serverProfile.age != null && !Number.isNaN(serverProfile.age) ? `${serverProfile.age} 岁` : '—'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">身高</Typography>
-                  <Typography variant="body1">
-                    {serverProfile.height_cm != null && !Number.isNaN(serverProfile.height_cm)
-                      ? `${serverProfile.height_cm} cm`
-                      : '—'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">体重</Typography>
-                  <Typography variant="body1">
-                    {serverProfile.weight_kg != null && !Number.isNaN(serverProfile.weight_kg)
-                      ? `${serverProfile.weight_kg} kg`
-                      : '—'}
-                  </Typography>
-                  {serverProfile.updated_at && (
-                    <>
-                      <Typography variant="body2" color="text.secondary" sx={{ pt: 1 }}>
-                        最近更新
+                <IconButton size="small" onClick={() => setEditOpen(true)}>
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Box>
+              
+              {profile?.age ? (
+                <>
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>年龄</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>{profile.age} <small>岁</small></Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>身高</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>{profile.height_cm} <small>cm</small></Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>体重</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>{profile.weight_kg} <small>kg</small></Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>BMI</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>{bmi || '--'}</Typography>
+                        {bmiLevel && (
+                          <Chip size="small" label={bmiLevel.label} sx={{ bgcolor: bmiLevel.color + '20', color: bmiLevel.color, height: 20 }} />
+                        )}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                  {bmr && (
+                    <Box sx={{ p: 1.5, bgcolor: 'rgba(0,191,165,0.08)', borderRadius: 2 }}>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>基础代谢 (BMR)</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                        {bmr} <small>kcal/天</small>
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(serverProfile.updated_at).toLocaleString('zh-CN')}
-                      </Typography>
-                    </>
+                    </Box>
                   )}
-                </Stack>
+                </>
               ) : (
-                <Typography variant="body2" color="text.secondary">
-                  服务端暂无画像记录，可在右侧填写后保存，将执行 Upsert 创建档案。
-                </Typography>
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
+                    尚未填写健康数据
+                  </Typography>
+                  <Button variant="outlined" size="small" onClick={() => setEditOpen(true)}>
+                    立即填写
+                  </Button>
+                </Box>
               )}
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={7}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-                编辑健康数据
-              </Typography>
-              <Stack spacing={2.5} component="form" noValidate onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-                <TextField
-                  select
-                  label="性别"
-                  value={form.gender}
-                  onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
-                  fullWidth
-                  size="small"
-                >
-                  {GENDER_OPTIONS.map((o) => (
-                    <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  label="年龄"
-                  type="number"
-                  value={form.age}
-                  onChange={(e) => setForm((f) => ({ ...f, age: e.target.value }))}
-                  fullWidth
-                  size="small"
-                  inputProps={{ min: 1, max: 120 }}
-                  placeholder="例如 22"
-                />
-                <TextField
-                  label="身高 (cm)"
-                  type="number"
-                  value={form.height_cm}
-                  onChange={(e) => setForm((f) => ({ ...f, height_cm: e.target.value }))}
-                  fullWidth
-                  size="small"
-                  inputProps={{ min: 50, max: 260, step: 0.1 }}
-                  placeholder="例如 178.5"
-                />
-                <TextField
-                  label="体重 (kg)"
-                  type="number"
-                  value={form.weight_kg}
-                  onChange={(e) => setForm((f) => ({ ...f, weight_kg: e.target.value }))}
-                  fullWidth
-                  size="small"
-                  inputProps={{ min: 20, max: 300, step: 0.1 }}
-                  placeholder="例如 75.0"
-                />
+        {/* 设备连接状态卡 */}
+        <Grid item xs={12} sm={4}>
+          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  设备状态
+                </Typography>
+                <DeviceIcon sx={{ color: '#64748B' }} />
+              </Box>
+              
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h3" sx={{ fontWeight: 800, color: devices.length > 0 ? 'primary.main' : '#94A3B8' }}>
+                  {devices.length}
+                </Typography>
+                <Typography variant="body2" sx={{ color: '#64748B' }}>
+                  已绑定设备
+                </Typography>
+              </Box>
 
-                {bmrPreview != null && (
-                  <Alert severity="info" icon={<HealthIcon />}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      参考基础代谢（估算）
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {devices.slice(0, 3).map((device, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <OnlineIcon sx={{ fontSize: 16, color: '#10B981' }} />
+                    <Typography variant="body2" noWrap sx={{ flex: 1 }}>
+                      {device}
                     </Typography>
-                    <Typography variant="body2">
-                      约 <strong>{bmrPreview}</strong> kcal/天（Mifflin-St Jeor，仅供参考，非医疗结论）
-                    </Typography>
-                  </Alert>
+                  </Box>
+                ))}
+                {devices.length === 0 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#94A3B8' }}>
+                    <OfflineIcon sx={{ fontSize: 16 }} />
+                    <Typography variant="body2">暂无绑定设备</Typography>
+                  </Box>
                 )}
-
-                <Button
-                  type="submit"
-                  variant="contained"
-                  size="large"
-                  startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-                  disabled={saving}
-                  sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 3 }}
-                >
-                  {saving ? '保存中…' : '保存信息'}
-                </Button>
-              </Stack>
+                {devices.length > 3 && (
+                  <Typography variant="caption" sx={{ color: '#64748B', pl: 3 }}>
+                    还有 {devices.length - 3} 个设备...
+                  </Typography>
+                )}
+              </Box>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* 告警设置 */}
-      <Card sx={{ mt: 3 }}>
-        <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <AlertIcon color="primary" />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              告警设置
-            </Typography>
-          </Stack>
-          <Divider sx={{ mb: 2 }} />
-          {alertLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-              <CircularProgress size={24} />
+      {/* 第二行：日/月图表 */}
+      <Card sx={{ mb: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+        <CardContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <TrendIcon sx={{ color: 'primary.main' }} />
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                饮食趋势
+              </Typography>
             </Box>
+            <ToggleButtonGroup
+              value={chartType}
+              exclusive
+              onChange={(e, val) => val && setChartType(val)}
+              size="small"
+              sx={{ bgcolor: '#F1F5F9', p: 0.5, borderRadius: 2 }}
+            >
+              <ToggleButton value="day" sx={{ borderRadius: 1.5, textTransform: 'none', px: 2 }}>
+                <CalendarIcon sx={{ fontSize: 16, mr: 0.5 }} />
+                日
+              </ToggleButton>
+              <ToggleButton value="month" sx={{ borderRadius: 1.5, textTransform: 'none', px: 2 }}>
+                月
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+
+          {chartLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+              <CircularProgress size={40} sx={{ color: '#00BFA5' }} />
+            </Box>
+          ) : chartData.length > 0 ? (
+            <Box ref={chartRef} sx={{ height: 280, width: '100%' }} />
           ) : (
-            <>
-              {alertError && (
-                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAlertError('')}>
-                  {alertError}
-                </Alert>
-              )}
-              {alertOk && (
-                <Alert severity="success" sx={{ mb: 2 }} onClose={() => setAlertOk('')}>
-                  {alertOk}
-                </Alert>
-              )}
-              <Stack spacing={2.5}>
-                <TextField
-                  label="告警邮箱"
-                  type="email"
-                  value={alertForm.email}
-                  onChange={(e) => setAlertForm((f) => ({ ...f, email: e.target.value }))}
-                  fullWidth
-                  size="small"
-                  placeholder="example@email.com"
-                  helperText="接收健康告警通知的邮箱地址"
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={alertForm.enabled}
-                      onChange={(e) => setAlertForm((f) => ({ ...f, enabled: e.target.checked }))}
-                      color="primary"
-                    />
-                  }
-                  label="启用邮箱告警"
-                />
-                <Alert severity="info" icon={<AlertIcon />}>
-                  <Typography variant="body2">
-                    启用后，系统将在检测到健康数据异常时发送邮件通知。
-                  </Typography>
-                </Alert>
-                <Button
-                  variant="contained"
-                  size="large"
-                  startIcon={alertSaving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-                  disabled={alertSaving}
-                  sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 3 }}
-                  onClick={handleAlertSave}
-                >
-                  {alertSaving ? '保存中…' : '保存告警设置'}
-                </Button>
-              </Stack>
-            </>
+            <Box sx={{ textAlign: 'center', py: 8, bgcolor: '#F8FAFC', borderRadius: 2 }}>
+              <Typography variant="body2" sx={{ color: '#64748B' }}>
+                暂无图表数据，开始记录用餐后这里将显示趋势
+              </Typography>
+            </Box>
           )}
         </CardContent>
       </Card>
+
+      {/* 第三行：AI报告和建议 */}
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <BulbIcon sx={{ color: '#F59E0B' }} />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  每日健康提醒
+                </Typography>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              {aiLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress size={24} sx={{ color: '#00BFA5' }} />
+                </Box>
+              ) : aiAdvice?.daily ? (
+                <Box>
+                  <Typography variant="body1" sx={{ lineHeight: 1.8, color: '#1E293B' }}>
+                    {aiAdvice.daily.advice}
+                  </Typography>
+                  {aiAdvice.daily.is_alert && (
+                    <Chip
+                      size="small"
+                      label="健康预警"
+                      sx={{ mt: 2, bgcolor: '#FEE2E2', color: '#DC2626' }}
+                    />
+                  )}
+                </Box>
+              ) : (
+                <Typography variant="body2" sx={{ color: '#64748B' }}>
+                  暂无今日提醒，请保持规律用餐
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <BulbIcon sx={{ color: '#8B5CF6' }} />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  下一餐建议
+                </Typography>
+              </Box>
+              <Divider sx={{ mb: 2 }} />
+              {aiLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress size={24} sx={{ color: '#00BFA5' }} />
+                </Box>
+              ) : aiAdvice?.next ? (
+                <Typography variant="body1" sx={{ lineHeight: 1.8, color: '#1E293B' }}>
+                  {aiAdvice.next.advice}
+                </Typography>
+              ) : (
+                <Typography variant="body2" sx={{ color: '#64748B' }}>
+                  正在分析您的饮食习惯，建议即将生成...
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* 编辑个人数据弹窗 */}
+      <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>编辑健康数据</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              select
+              label="性别"
+              value={editForm.gender}
+              onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+              fullWidth
+            >
+              {GENDER_OPTIONS.map((o) => (
+                <MenuItem key={o.value} value={o.value}>
+                  {o.icon} {o.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="年龄"
+              type="number"
+              value={editForm.age}
+              onChange={(e) => setEditForm({ ...editForm, age: e.target.value })}
+              fullWidth
+              inputProps={{ min: 1, max: 120 }}
+            />
+            <TextField
+              label="身高 (cm)"
+              type="number"
+              value={editForm.height_cm}
+              onChange={(e) => setEditForm({ ...editForm, height_cm: e.target.value })}
+              fullWidth
+              inputProps={{ min: 50, max: 260, step: 0.1 }}
+            />
+            <TextField
+              label="体重 (kg)"
+              type="number"
+              value={editForm.weight_kg}
+              onChange={(e) => setEditForm({ ...editForm, weight_kg: e.target.value })}
+              fullWidth
+              inputProps={{ min: 20, max: 300, step: 0.1 }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEditOpen(false)}>取消</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveProfile}
+            disabled={saving}
+            startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
+          >
+            保存
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

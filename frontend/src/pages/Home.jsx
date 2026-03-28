@@ -1,158 +1,301 @@
-import { Box, Typography, Grid, Card, CardActionArea, CardContent, useTheme, Avatar } from '@mui/material';
-import { 
-  BarChart as ChartIcon,
-  Assignment as ReportIcon,
-  Lightbulb as BulbIcon,
-  Restaurant as MealIcon,
-  DevicesOther as DeviceIcon,
-  FitnessCenter as ProfileIcon,
-  Group as CommunityIcon,
-  TrendingUp as TrendIcon,
-  EmojiEvents as StarIcon
-} from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Box, Typography, Avatar, Card, CardContent, LinearProgress, Grid, Chip } from '@mui/material';
+import { AccessTime, Speed, Restaurant } from '@mui/icons-material';
+import { getCurrentUser } from '../api/client';
+import { fetchMeals } from '../api/meals';
+import { listBindings } from '../api/devices';
 
-const modules = [
-  { 
-    title: '健康图表', 
-    desc: '日趋势、周对比、浪费率等全方位数据', 
-    path: '/charts', 
-    icon: <ChartIcon fontSize="large" />,
-    color: '#3B82F6',
-    bgColor: '#EFF6FF'
-  },
-  { 
-    title: 'AI 报告', 
-    desc: '获取个性化餐次点评与每日预警', 
-    path: '/report', 
-    icon: <ReportIcon fontSize="large" />,
-    color: '#8B5CF6',
-    bgColor: '#F5F3FF'
-  },
-  { 
-    title: '个性建议', 
-    desc: '基于历史数据的科学饮食建议', 
-    path: '/recommendations', 
-    icon: <BulbIcon fontSize="large" />,
-    color: '#F59E0B',
-    bgColor: '#F5F3FF'
-  },
-  { 
-    title: '就餐记录', 
-    desc: '查看每一次就餐的高精详情', 
-    path: '/meals', 
-    icon: <MealIcon fontSize="large" />,
-    color: '#10B981',
-    bgColor: '#ECFDF5'
-  },
-  { 
-    title: '设备管理', 
-    desc: '绑定智能餐盒，开启数据之旅', 
-    path: '/devices', 
-    icon: <DeviceIcon fontSize="large" />,
-    color: '#6366F1',
-    bgColor: '#EEF2FF'
-  },
-  {
-    title: '用户画像',
-    desc: '身高体重与性别年龄，助力 AI 估算代谢与建议',
-    path: '/profile',
-    icon: <ProfileIcon fontSize="large" />,
-    color: '#0D9488',
-    bgColor: '#CCFBF1'
-  },
-  { 
-    title: '圈子社区', 
-    desc: '加入健康营，和大家一起吃得更好', 
-    path: '/communities', 
-    icon: <CommunityIcon fontSize="large" />,
-    color: '#EC4899',
-    bgColor: '#FDF2F8'
-  }
+// 计算进食进度 (intake / served * 100)
+function calcProgress(served, intake) {
+  if (!served || served <= 0) return 0;
+  const progress = (intake / served) * 100;
+  return Math.min(Math.max(progress, 0), 100);
+}
+
+// 格式化时间差
+function formatDuration(startTime) {
+  if (!startTime) return '0分钟';
+  const start = new Date(startTime);
+  const now = new Date();
+  const diffMs = now - start;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffDays > 0) return `${diffDays}天${diffHours % 24}小时`;
+  if (diffHours > 0) return `${diffHours}小时${diffMins % 60}分钟`;
+  return `${diffMins}分钟`;
+}
+
+// 餐盒格子颜色
+const GRID_COLORS = [
+  { bg: '#FEE2E2', bar: '#EF4444', text: '#991B1B' },   // 红
+  { bg: '#DBEAFE', bar: '#3B82F6', text: '#1E40AF' },   // 蓝
+  { bg: '#D1FAE5', bar: '#10B981', text: '#065F46' },   // 绿
+  { bg: '#FEF3C7', bar: '#F59E0B', text: '#92400E' },   // 黄
 ];
 
 export default function Home() {
-  const navigate = useNavigate();
-  const theme = useTheme();
+  const currentUser = getCurrentUser();
+  const [loading, setLoading] = useState(true);
+  const [latestMeal, setLatestMeal] = useState(null);
+  const [devices, setDevices] = useState([]);
+  const [stats, setStats] = useState({
+    totalTime: '',
+    avgSpeed: 0,
+  });
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        
+        // 获取设备列表和用餐记录
+        const [devicesRes, mealsRes] = await Promise.all([
+          listBindings(),
+          fetchMeals({ limit: 1 }),
+        ]);
+        
+        setDevices(devicesRes.devices || []);
+        
+        // 获取最新用餐详情
+        if (mealsRes.items && mealsRes.items.length > 0) {
+          const latest = mealsRes.items[0];
+          setLatestMeal(latest);
+          
+          // 计算统计数据
+          if (latest.start_time) {
+            setStats({
+              totalTime: formatDuration(latest.start_time),
+              avgSpeed: latest.avg_speed_g_per_min || 0,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('加载首页数据失败:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadData();
+    
+    // 每30秒刷新一次
+    const timer = setInterval(loadData, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 生成四个格子的数据
+  const gridData = [1, 2, 3, 4].map((index) => {
+    const detail = latestMeal?.grid_details?.find(g => g.grid_index === index);
+    const served = detail?.served_g || 0;
+    const intake = detail?.intake_g || 0;
+    const foodName = detail?.food_name || `餐格 ${index}`;
+    const progress = calcProgress(served, intake);
+    
+    return {
+      index,
+      foodName,
+      served,
+      intake,
+      progress,
+      color: GRID_COLORS[index - 1],
+    };
+  });
 
   return (
     <Box sx={{ pb: 4 }}>
-      <Box sx={{ mb: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B' }}>
-          早上好，准备好健康的一天了吗？
-        </Typography>
-        <Typography variant="subtitle1" sx={{ color: '#64748B' }}>
-          追踪饮食情况，获取 AI 分析与建议。
-        </Typography>
+      {/* 第一行：头像 + 用户名 */}
+      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Avatar
+          sx={{
+            width: 64,
+            height: 64,
+            bgcolor: 'primary.main',
+            fontSize: '1.5rem',
+            fontWeight: 'bold',
+            boxShadow: '0 4px 12px rgba(0, 191, 165, 0.3)',
+          }}
+        >
+          {currentUser?.username?.[0]?.toUpperCase() || 'U'}
+        </Avatar>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 800, color: '#1E293B' }}>
+            {currentUser?.username || '用户'}
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748B' }}>
+            欢迎回来，祝您用餐愉快
+          </Typography>
+        </Box>
       </Box>
 
-      {/* 顶部欢迎卡片 */}
-      <Card sx={{ 
-        mb: 4, 
-        background: 'linear-gradient(135deg, #00BFA5 0%, #008573 100%)',
-        color: 'white',
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: '0 12px 24px rgba(0,191,165,0.2)'
-      }}>
-        <Box sx={{ 
-          position: 'absolute', right: -20, top: -20, 
-          opacity: 0.1, transform: 'scale(2)'
-        }}>
-          <TrendIcon sx={{ fontSize: 120 }} />
-        </Box>
-        <CardContent sx={{ p: { xs: 3, md: 4 }, position: 'relative', zIndex: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-            <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff' }}>
-              <StarIcon />
-            </Avatar>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              今日目标：均衡饮食
-            </Typography>
-          </Box>
-          <Typography variant="body1" sx={{ opacity: 0.9, maxWidth: 500 }}>
-            您的智能餐盒已准备就绪。每次就餐的数据都会自动同步，我们的云端 AI 营养师将为您提供实时指导。
-          </Typography>
+      {/* 第二行：共处时间 + 进食速度 */}
+      <Card
+        sx={{
+          mb: 4,
+          background: 'linear-gradient(135deg, #00BFA5 0%, #008573 100%)',
+          color: 'white',
+          borderRadius: 3,
+          boxShadow: '0 8px 24px rgba(0, 191, 165, 0.25)',
+        }}
+      >
+        <CardContent sx={{ p: 3 }}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '12px',
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <AccessTime sx={{ fontSize: 28 }} />
+                </Box>
+                <Box>
+                  <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
+                    您已经和餐盒共处
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 800 }}>
+                    {loading ? '---' : stats.totalTime || '暂无记录'}
+                  </Typography>
+                </Box>
+              </Box>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '12px',
+                    bgcolor: 'rgba(255,255,255,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Speed sx={{ fontSize: 28 }} />
+                </Box>
+                <Box>
+                  <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
+                    您的进食速度
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 800 }}>
+                    {loading ? '---' : `${stats.avgSpeed.toFixed(1)} g/min`}
+                  </Typography>
+                </Box>
+              </Box>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
 
-      <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, color: '#1E293B' }}>
-        功能模块
-      </Typography>
+      {/* 四个餐盒进度卡 */}
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Restaurant sx={{ color: 'primary.main' }} />
+        <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B' }}>
+          餐盒用餐进度
+        </Typography>
+        {devices.length > 0 && (
+          <Chip
+            size="small"
+            label={`已绑定 ${devices.length} 个设备`}
+            sx={{ ml: 'auto', bgcolor: 'rgba(0, 191, 165, 0.1)', color: 'primary.main' }}
+          />
+        )}
+      </Box>
 
-      <Grid container spacing={3}>
-        {modules.map((item) => (
-          <Grid item xs={12} sm={6} md={4} key={item.path}>
-            <Card sx={{ 
-              height: '100%', 
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              '&:hover': {
-                transform: 'translateY(-4px)',
-                boxShadow: '0 12px 24px rgba(0,0,0,0.06)'
-              }
-            }}>
-              <CardActionArea 
-                onClick={() => navigate(item.path)}
-                sx={{ height: '100%', p: 3, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start' }}
-              >
-                <Box sx={{ 
-                  p: 1.5, borderRadius: 3, mb: 2,
-                  bgcolor: item.bgColor, color: item.color,
-                  display: 'inline-flex'
-                }}>
-                  {item.icon}
+      <Grid container spacing={2}>
+        {gridData.map((grid) => (
+          <Grid item xs={12} sm={6} key={grid.index}>
+            <Card
+              sx={{
+                height: '100%',
+                borderRadius: 3,
+                bgcolor: grid.color.bg,
+                border: 'none',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 8px 16px rgba(0,0,0,0.08)',
+                },
+              }}
+            >
+              <CardContent sx={{ p: 2.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{ fontWeight: 700, color: grid.color.text }}
+                  >
+                    {grid.foodName}
+                  </Typography>
+                  <Typography
+                    variant="h6"
+                    sx={{ fontWeight: 800, color: grid.color.text }}
+                  >
+                    {grid.progress.toFixed(0)}%
+                  </Typography>
                 </Box>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#1E293B' }}>
-                  {item.title}
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#64748B', lineHeight: 1.6 }}>
-                  {item.desc}
-                </Typography>
-              </CardActionArea>
+
+                {/* 进度条 */}
+                <Box sx={{ mb: 2 }}>
+                  <LinearProgress
+                    variant="determinate"
+                    value={grid.progress}
+                    sx={{
+                      height: 12,
+                      borderRadius: 6,
+                      bgcolor: 'rgba(255,255,255,0.5)',
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 6,
+                        bgcolor: grid.color.bar,
+                        transition: 'transform 0.5s ease',
+                      },
+                    }}
+                  />
+                </Box>
+
+                {/* 数据详情 */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="caption" sx={{ color: grid.color.text, opacity: 0.8 }}>
+                    已吃: {grid.intake}g
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: grid.color.text, opacity: 0.8 }}>
+                    总量: {grid.served}g
+                  </Typography>
+                </Box>
+              </CardContent>
             </Card>
           </Grid>
         ))}
       </Grid>
+
+      {/* 无数据提示 */}
+      {!loading && !latestMeal && (
+        <Card
+          sx={{
+            mt: 3,
+            p: 4,
+            textAlign: 'center',
+            borderRadius: 3,
+            bgcolor: '#F8FAFC',
+            border: '1px dashed #CBD5E1',
+          }}
+        >
+          <Typography variant="body1" sx={{ color: '#64748B', mb: 1 }}>
+            暂无用餐记录
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#94A3B8' }}>
+            开始您的第一餐，数据将自动同步到这里
+          </Typography>
+        </Card>
+      )}
     </Box>
   );
 }
