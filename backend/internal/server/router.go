@@ -27,6 +27,8 @@ func NewRouter(
 	joinCommunityHandler gin.HandlerFunc,
 	listCommunitiesHandler gin.HandlerFunc,
 	communityDashboardHandler gin.HandlerFunc,
+	putAlertSettingHandler gin.HandlerFunc,
+	getAlertSettingHandler gin.HandlerFunc,
 ) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
@@ -56,6 +58,8 @@ func NewRouter(
 	authorized.POST("/communities/:community_id/join", joinCommunityHandler)
 	authorized.GET("/communities", listCommunitiesHandler)
 	authorized.GET("/communities/:community_id/dashboard", communityDashboardHandler)
+	authorized.PUT("/users/me/alert-setting", putAlertSettingHandler)
+	authorized.GET("/users/me/alert-setting", getAlertSettingHandler)
 
 	v1 := router.Group("/api/v1")
 	{
@@ -84,6 +88,8 @@ func NewRouter(
 		v1Authorized.POST("/communities/:community_id/join", joinCommunityHandler)
 		v1Authorized.GET("/communities", listCommunitiesHandler)
 		v1Authorized.GET("/communities/:community_id/dashboard", communityDashboardHandler)
+		v1Authorized.PUT("/users/me/alert-setting", putAlertSettingHandler)
+		v1Authorized.GET("/users/me/alert-setting", getAlertSettingHandler)
 	}
 
 	return router

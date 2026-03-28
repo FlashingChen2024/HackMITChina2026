@@ -40,8 +40,8 @@ export default function Layout() {
     { to: '/recommendations', label: '个性建议', icon: <BulbIcon /> },
     { to: '/meals', label: '就餐记录', icon: <MealIcon /> },
     { to: '/devices', label: '设备管理', icon: <DeviceIcon /> },
-    { to: '/profile', label: '用户画像', icon: <ProfileIcon /> },
-    { to: '/communities', label: '圈子社区', icon: <CommunityIcon /> }
+    { to: '/communities', label: '圈子社区', icon: <CommunityIcon /> },
+    { to: '/profile', label: '个人信息', icon: <ProfileIcon /> }
   ];
 
   const handleLogout = () => {

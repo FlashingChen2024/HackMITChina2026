@@ -1,6 +1,33 @@
 import { get, put } from './client';
 
 /**
+ * 获取告警设置。
+ * `GET /api/v1/users/me/alert-setting`
+ *
+ * @returns {Promise<{ email?: string, enabled?: boolean }>}
+ */
+export function fetchAlertSetting() {
+  return get('/api/v1/users/me/alert-setting').then((data) => {
+    const setting = data.alert_setting || data;
+    return {
+      email: setting.email || '',
+      enabled: !!setting.enabled,
+    };
+  });
+}
+
+/**
+ * 更新告警设置。
+ * `PUT /api/v1/users/me/alert-setting`
+ *
+ * @param {{ email: string, enabled: boolean }} body
+ * @returns {Promise<{ message?: string }>}
+ */
+export function updateAlertSetting(body) {
+  return put('/api/v1/users/me/alert-setting', body);
+}
+
+/**
  * 将接口返回（snake_case 或 camelCase）统一为前端使用的 snake_case 结构。
  *
  * @param {Record<string, unknown> | null | undefined} raw

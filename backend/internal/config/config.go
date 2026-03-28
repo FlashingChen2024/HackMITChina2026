@@ -16,6 +16,8 @@ const (
 	defaultAITemperature    = 0.7
 	defaultVisionBaseURL    = "https://api.openai.com/v1"
 	defaultVisionModel      = "gpt-4o-mini"
+	defaultSMTPHost         = "smtp.example.com"
+	defaultSMTPPort         = 587
 )
 
 type Config struct {
@@ -33,6 +35,11 @@ type Config struct {
 	VisionBaseURL string
 	VisionModel   string
 	VisionAPIKey  string
+	SMTPHost      string
+	SMTPPort      int
+	SMTPUsername  string
+	SMTPPassword  string
+	SMTPFrom      string
 }
 
 func Load() Config {
@@ -51,6 +58,11 @@ func Load() Config {
 		VisionBaseURL: getEnv("VISION_BASE_URL", defaultVisionBaseURL),
 		VisionModel:   getEnv("VISION_MODEL", defaultVisionModel),
 		VisionAPIKey:  getEnv("VISION_API_KEY", ""),
+		SMTPHost:      getEnv("SMTP_HOST", defaultSMTPHost),
+		SMTPPort:      getEnvInt("SMTP_PORT", defaultSMTPPort),
+		SMTPUsername:  getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:  getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:      getEnv("SMTP_FROM", ""),
 	}
 }
 
