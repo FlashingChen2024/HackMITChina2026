@@ -5,6 +5,8 @@ import "github.com/gin-gonic/gin"
 func NewRouter(
 	pingHandler gin.HandlerFunc,
 	telemetryHandler gin.HandlerFunc,
+	visionAnalyzeHandler gin.HandlerFunc,
+	foodLibrarySearchHandler gin.HandlerFunc,
 	registerHandler gin.HandlerFunc,
 	loginHandler gin.HandlerFunc,
 	bindDeviceHandler gin.HandlerFunc,
@@ -20,6 +22,7 @@ func NewRouter(
 	aiAdviceHandler gin.HandlerFunc,
 	putUserProfileHandler gin.HandlerFunc,
 	getUserProfileHandler gin.HandlerFunc,
+	visionConfirmHandler gin.HandlerFunc,
 	createCommunityHandler gin.HandlerFunc,
 	joinCommunityHandler gin.HandlerFunc,
 	listCommunitiesHandler gin.HandlerFunc,
@@ -34,6 +37,8 @@ func NewRouter(
 	router.POST("/auth/login", loginHandler)
 	authorized := router.Group("")
 	authorized.Use(jwtAuthMiddleware)
+	authorized.POST("/vision/analyze", visionAnalyzeHandler)
+	authorized.GET("/food-library/search", foodLibrarySearchHandler)
 	authorized.GET("/test_auth", testAuthHandler)
 	authorized.POST("/devices/bind", bindDeviceHandler)
 	authorized.GET("/devices", listDevicesHandler)
@@ -46,6 +51,7 @@ func NewRouter(
 	authorized.PUT("/users/me/profile", putUserProfileHandler)
 	authorized.GET("/users/me/profile", getUserProfileHandler)
 	authorized.PUT("/meals/:meal_id/foods", putMealFoodsHandler)
+	authorized.POST("/meals/:meal_id/vision-confirm", visionConfirmHandler)
 	authorized.POST("/communities/create", createCommunityHandler)
 	authorized.POST("/communities/:community_id/join", joinCommunityHandler)
 	authorized.GET("/communities", listCommunitiesHandler)
@@ -59,6 +65,8 @@ func NewRouter(
 		v1.POST("/auth/login", loginHandler)
 		v1Authorized := v1.Group("")
 		v1Authorized.Use(jwtAuthMiddleware)
+		v1Authorized.POST("/vision/analyze", visionAnalyzeHandler)
+		v1Authorized.GET("/food-library/search", foodLibrarySearchHandler)
 		v1Authorized.GET("/test_auth", testAuthHandler)
 		v1Authorized.POST("/devices/bind", bindDeviceHandler)
 		v1Authorized.GET("/devices", listDevicesHandler)
@@ -71,6 +79,7 @@ func NewRouter(
 		v1Authorized.PUT("/users/me/profile", putUserProfileHandler)
 		v1Authorized.GET("/users/me/profile", getUserProfileHandler)
 		v1Authorized.PUT("/meals/:meal_id/foods", putMealFoodsHandler)
+		v1Authorized.POST("/meals/:meal_id/vision-confirm", visionConfirmHandler)
 		v1Authorized.POST("/communities/create", createCommunityHandler)
 		v1Authorized.POST("/communities/:community_id/join", joinCommunityHandler)
 		v1Authorized.GET("/communities", listCommunitiesHandler)

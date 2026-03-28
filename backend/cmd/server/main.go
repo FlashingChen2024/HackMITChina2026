@@ -53,9 +53,25 @@ func main() {
 	mealPersistence := store.NewGormMealPersistence(mysqlDB)
 	telemetryService := service.NewTelemetryService(deviceStateStore, log.Default(), mealPersistence)
 	telemetryHandler := api.NewTelemetryHandler(telemetryService, deviceBindingService)
+	var visionAnalyzer service.VisionAnalyzer
+	visionClient, visionErr := service.NewOpenAIVisionClient(service.VisionClientConfig{
+		BaseURL: cfg.VisionBaseURL,
+		Model:   cfg.VisionModel,
+		APIKey:  cfg.VisionAPIKey,
+	})
+	if visionErr != nil {
+		log.Printf("vision client disabled: %v", visionErr)
+	} else {
+		visionAnalyzer = visionClient
+		log.Printf("vision client enabled with base_url=%s model=%s", cfg.VisionBaseURL, cfg.VisionModel)
+	}
+	visionAnalyzeHandler := api.NewVisionAnalyzeHandler(visionAnalyzer)
+	foodLibrary := service.NewStaticFoodLibrary()
+	foodLibraryHandler := api.NewFoodLibraryHandler(foodLibrary)
 	mealQueryStore := store.NewGormMealQueryStore(mysqlDB)
 	mealQueryService := service.NewMealQueryService(mealQueryStore)
 	mealsHandler := api.NewMealsHandler(mealQueryService)
+	visionConfirmHandler := api.NewVisionConfirmHandler(mealQueryService, foodLibrary)
 	aiAdviceStore := store.NewGormAIAdviceStore(mysqlDB)
 	var aiGenerator service.AITextGenerator
 	aiClient, aiErr := service.NewOpenAICompatibleClient(service.AIModelClientConfig{
@@ -86,6 +102,8 @@ func main() {
 	router := server.NewRouter(
 		pingHandler.Handle,
 		telemetryHandler.Handle,
+		visionAnalyzeHandler.Analyze,
+		foodLibraryHandler.Search,
 		authHandler.Register,
 		authHandler.Login,
 		deviceBindingHandler.Bind,
@@ -101,6 +119,7 @@ func main() {
 		aiAdviceHandler.Get,
 		userProfileHandler.Upsert,
 		userProfileHandler.Get,
+		visionConfirmHandler.Confirm,
 		communityHandler.Create,
 		communityHandler.Join,
 		communityHandler.List,

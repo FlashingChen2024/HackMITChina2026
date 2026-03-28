@@ -14,6 +14,8 @@ const (
 	defaultAIBaseURL        = "https://api.openai.com/v1"
 	defaultAIModel          = "gpt-4o-mini"
 	defaultAITemperature    = 0.7
+	defaultVisionBaseURL    = "https://api.openai.com/v1"
+	defaultVisionModel      = "gpt-4o-mini"
 )
 
 type Config struct {
@@ -28,6 +30,9 @@ type Config struct {
 	AIModel       string
 	AIAPIKey      string
 	AITemperature float64
+	VisionBaseURL string
+	VisionModel   string
+	VisionAPIKey  string
 }
 
 func Load() Config {
@@ -43,6 +48,9 @@ func Load() Config {
 		AIModel:       getEnv("AI_MODEL", defaultAIModel),
 		AIAPIKey:      getEnv("AI_API_KEY", ""),
 		AITemperature: getEnvFloat("AI_TEMPERATURE", defaultAITemperature),
+		VisionBaseURL: getEnv("VISION_BASE_URL", defaultVisionBaseURL),
+		VisionModel:   getEnv("VISION_MODEL", defaultVisionModel),
+		VisionAPIKey:  getEnv("VISION_API_KEY", ""),
 	}
 }
 

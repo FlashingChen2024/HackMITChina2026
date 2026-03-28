@@ -64,6 +64,9 @@ $env:AI_BASE_URL="https://api.openai.com/v1"
 $env:AI_MODEL="gpt-4"
 $env:AI_API_KEY="your-ai-api-key"  # 请自定义
 $env:AI_TEMPERATURE="0.7"
+$env:VISION_BASE_URL="https://api.siliconflow.cn/v1"
+$env:VISION_MODEL="Qwen/Qwen3.5-9B"
+$env:VISION_API_KEY="your-vision-api-key"  # 请自定义
 ```
 
 **Linux/macOS:**
@@ -78,6 +81,9 @@ export AI_BASE_URL="https://api.openai.com/v1"
 export AI_MODEL="gpt-4"
 export AI_API_KEY="your-ai-api-key"  # 请自定义
 export AI_TEMPERATURE="0.7"
+export VISION_BASE_URL="https://api.siliconflow.cn/v1"
+export VISION_MODEL="Qwen/Qwen3.5-9B"
+export VISION_API_KEY="your-vision-api-key"  # 请自定义
 ```
 
 ### 3. 启动服务

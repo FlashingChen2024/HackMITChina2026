@@ -23,3 +23,21 @@ func TestLoadAIConfigFromEnv(t *testing.T) {
 		t.Fatalf("unexpected AITemperature: %v", cfg.AITemperature)
 	}
 }
+
+func TestLoadVisionConfigFromEnv(t *testing.T) {
+	t.Setenv("VISION_BASE_URL", "https://vision.example.com/v1")
+	t.Setenv("VISION_MODEL", "vision-pro")
+	t.Setenv("VISION_API_KEY", "vision-key")
+
+	cfg := Load()
+
+	if cfg.VisionBaseURL != "https://vision.example.com/v1" {
+		t.Fatalf("unexpected VisionBaseURL: %s", cfg.VisionBaseURL)
+	}
+	if cfg.VisionModel != "vision-pro" {
+		t.Fatalf("unexpected VisionModel: %s", cfg.VisionModel)
+	}
+	if cfg.VisionAPIKey != "vision-key" {
+		t.Fatalf("unexpected VisionAPIKey: %s", cfg.VisionAPIKey)
+	}
+}
