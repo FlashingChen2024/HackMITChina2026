@@ -11,10 +11,14 @@ import {
   AccessTime as TimeIcon,
   PhotoCamera as CameraIcon,
   StopCircle as StopCameraIcon,
-  Send as SendIcon
+  Send as SendIcon,
+  AutoAwesome as AiVisionIcon,
 } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
-import { fetchMeals, updateMealFoods } from '../api/meals';
+import { fetchMeals, updateMealFoods, confirmMealVision } from '../api/meals';
+import { analyzeVision } from '../api/vision';
+import { searchFoodLibrary } from '../api/foodLibrary';
+import { compressDataUrlForVision } from '../utils/imageCompress';
 
 export default function Meals() {
   const currentUser = getCurrentUser();
@@ -38,12 +42,13 @@ export default function Meals() {
   });
   const [selectedMealId, setSelectedMealId] = useState('');
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [visionBusy, setVisionBusy] = useState(false);
   const [submitResult, setSubmitResult] = useState('');
   const [gridInputs, setGridInputs] = useState([
-    { grid_index: 1, food_name: '', unit_cal_per_100g: '' },
-    { grid_index: 2, food_name: '', unit_cal_per_100g: '' },
-    { grid_index: 3, food_name: '', unit_cal_per_100g: '' },
-    { grid_index: 4, food_name: '', unit_cal_per_100g: '' },
+    { grid_index: 1, food_name: '', unit_cal_per_100g: '', food_code: '' },
+    { grid_index: 2, food_name: '', unit_cal_per_100g: '', food_code: '' },
+    { grid_index: 3, food_name: '', unit_cal_per_100g: '', food_code: '' },
+    { grid_index: 4, food_name: '', unit_cal_per_100g: '', food_code: '' },
   ]);
 
   const load = async (cursor = '') => {
@@ -167,9 +172,9 @@ export default function Meals() {
   };
 
   /**
-   * 更新某个格口的食物名称或单位热量输入。
+   * 更新某个格口的食物名称、热量或食物库编码。
    * @param {number} gridIndex
-   * @param {'food_name' | 'unit_cal_per_100g'} key
+   * @param {'food_name' | 'unit_cal_per_100g' | 'food_code'} key
    * @param {string} value
    * @returns {void}
    */
@@ -181,10 +186,84 @@ export default function Meals() {
   };
 
   /**
-   * 提交已确认的食物信息到后端计算卡路里。
+   * 单格：压缩图 → §9.1 识菜 → §9.2 食物库，回填名称/热量/food_code。
+   * @param {number} gridIndex
    * @returns {Promise<void>}
    */
-  const submitFoods = async () => {
+  const recognizeGrid = async (gridIndex) => {
+    setCameraError('');
+    setSubmitResult('');
+    setError(null);
+    const snap = gridSnapshots[gridIndex];
+    if (!snap) {
+      setCameraError(`请先拍摄格口 ${gridIndex} 照片`);
+      return;
+    }
+    setVisionBusy(true);
+    try {
+      const { image_base64, compress_size_kb } = await compressDataUrlForVision(snap);
+      const vision = await analyzeVision({ image_base64, compress_size_kb });
+      const kw = (vision.keywords_cn && vision.keywords_cn[0])
+        || (vision.keywords_en && vision.keywords_en[0]);
+      if (!kw) {
+        setCameraError('未能识别菜品关键词，请手动填写');
+        return;
+      }
+      const lib = await searchFoodLibrary(kw);
+      const match = lib.matches && lib.matches[0];
+      if (!match) {
+        setCameraError(`食物库暂无「${kw}」匹配，请手动填写或换关键词搜索`);
+        return;
+      }
+      updateGridInput(gridIndex, 'food_name', match.food_name_cn);
+      updateGridInput(gridIndex, 'unit_cal_per_100g', String(match.default_unit_cal_per_100g));
+      updateGridInput(gridIndex, 'food_code', match.food_code);
+      setSubmitResult(`格口 ${gridIndex} 已匹配：${match.food_name_cn}（${match.food_code}）`);
+    } catch (e) {
+      setError(e.message || '识菜失败');
+    } finally {
+      setVisionBusy(false);
+    }
+  };
+
+  /**
+   * §9.3 视觉确认挂载（仅 food_code）。
+   * @returns {Promise<void>}
+   */
+  const submitVisionConfirm = async () => {
+    setSubmitResult('');
+    setError(null);
+    if (!selectedMealId) {
+      setError('请先选择要挂载食物信息的餐次');
+      return;
+    }
+    const visionGrids = gridInputs
+      .filter((g) => String(g.food_code).trim() !== '')
+      .map((g) => ({
+        grid_index: g.grid_index,
+        food_code: String(g.food_code).trim(),
+      }));
+    if (visionGrids.length === 0) {
+      setError('请至少一个格口完成识菜并产生食物编码，或使用下方「手动卡路里点火」');
+      return;
+    }
+    setSubmitLoading(true);
+    try {
+      const res = await confirmMealVision(selectedMealId, visionGrids);
+      setSubmitResult(res.message || '视觉识别确认成功，卡路里已就绪');
+      await load();
+    } catch (e) {
+      setError(e.message || '视觉确认失败');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  /**
+   * §4.1 手动挂载：食物名 + 每 100g 卡路里（不向接口发送 photo / food_code）。
+   * @returns {Promise<void>}
+   */
+  const submitManualFoods = async () => {
     setSubmitResult('');
     setError(null);
     const selected = gridInputs
@@ -197,10 +276,6 @@ export default function Meals() {
 
     if (!selectedMealId) {
       setError('请先选择要挂载食物信息的餐次');
-      return;
-    }
-    if (Object.values(gridSnapshots).every((snapshot) => !snapshot)) {
-      setError('请先完成至少一个格口的拍照，再提交食物识别结果');
       return;
     }
     if (selected.length === 0) {
@@ -232,7 +307,7 @@ export default function Meals() {
             菜品视觉识别与卡路里点火
           </Typography>
           <Typography variant="body2" sx={{ mb: 2, color: '#64748B' }}>
-            先用摄像头拍照，再填写识别出的菜品与单位卡路里，提交后端进行餐次卡路里挂载。
+            流程对齐 API v4.4：按格口拍照后可点「AI 识菜」走 §9.1→§9.2 回填食物库编码，再点「视觉确认挂载」调用 §9.3；或直接手填名称与热量，使用「手动卡路里点火」调用 §4.1。
           </Typography>
 
           <Stack spacing={2}>
@@ -332,13 +407,25 @@ export default function Meals() {
                           未拍照
                         </Box>
                       )}
-                      <Button
-                        size="small"
-                        variant={activeCaptureGrid === gridIndex ? 'contained' : 'outlined'}
-                        onClick={() => setActiveCaptureGrid(gridIndex)}
-                      >
-                        设为当前拍照格口
-                      </Button>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
+                        <Button
+                          size="small"
+                          variant={activeCaptureGrid === gridIndex ? 'contained' : 'outlined'}
+                          onClick={() => setActiveCaptureGrid(gridIndex)}
+                        >
+                          设为当前拍照格口
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="secondary"
+                          startIcon={<AiVisionIcon />}
+                          disabled={visionBusy || submitLoading || !gridSnapshots[gridIndex]}
+                          onClick={() => recognizeGrid(gridIndex)}
+                        >
+                          AI 识菜
+                        </Button>
+                      </Stack>
                     </CardContent>
                   </Card>
                 </Grid>
@@ -368,6 +455,14 @@ export default function Meals() {
                           inputProps={{ min: 0, step: '0.1' }}
                           placeholder="如：80"
                         />
+                        <TextField
+                          size="small"
+                          label="食物库编码 (food_code)"
+                          value={grid.food_code}
+                          onChange={(e) => updateGridInput(grid.grid_index, 'food_code', e.target.value)}
+                          placeholder="识菜后自动填入，§9.3 必填"
+                          helperText="用于 POST /meals/{meal_id}/vision-confirm"
+                        />
                       </Stack>
                     </CardContent>
                   </Card>
@@ -378,20 +473,30 @@ export default function Meals() {
             <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
               <Button
                 variant="contained"
-                startIcon={<SendIcon />}
-                onClick={submitFoods}
-                disabled={submitLoading}
+                color="secondary"
+                startIcon={<AiVisionIcon />}
+                onClick={submitVisionConfirm}
+                disabled={submitLoading || visionBusy}
               >
-                {submitLoading ? '提交中...' : '提交给后端计算卡路里'}
+                {submitLoading ? '提交中...' : '视觉确认挂载 (§9.3)'}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<SendIcon />}
+                onClick={submitManualFoods}
+                disabled={submitLoading || visionBusy}
+              >
+                {submitLoading ? '提交中...' : '手动卡路里点火 (§4.1)'}
               </Button>
               <Button
                 variant="text"
+                disabled={visionBusy}
                 onClick={() => {
                   setGridInputs([
-                    { grid_index: 1, food_name: '', unit_cal_per_100g: '' },
-                    { grid_index: 2, food_name: '', unit_cal_per_100g: '' },
-                    { grid_index: 3, food_name: '', unit_cal_per_100g: '' },
-                    { grid_index: 4, food_name: '', unit_cal_per_100g: '' },
+                    { grid_index: 1, food_name: '', unit_cal_per_100g: '', food_code: '' },
+                    { grid_index: 2, food_name: '', unit_cal_per_100g: '', food_code: '' },
+                    { grid_index: 3, food_name: '', unit_cal_per_100g: '', food_code: '' },
+                    { grid_index: 4, food_name: '', unit_cal_per_100g: '', food_code: '' },
                   ]);
                   setGridSnapshots({ 1: '', 2: '', 3: '', 4: '' });
                   setActiveCaptureGrid(1);
