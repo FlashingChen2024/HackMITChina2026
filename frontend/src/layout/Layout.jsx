@@ -9,8 +9,6 @@ import {
 import { 
   Home as HomeIcon,
   BarChart as ChartIcon,
-  Assignment as ReportIcon,
-  Lightbulb as BulbIcon,
   Restaurant as MealIcon,
   DevicesOther as DeviceIcon,
   FitnessCenter as ProfileIcon,
@@ -18,7 +16,8 @@ import {
   Logout as LogoutIcon,
   AccountCircle as AccountIcon,
   Menu as MenuIcon,
-  Timeline as TimelineIcon
+  Timeline as TimelineIcon,
+  NotificationsActive as AlertIcon
 } from '@mui/icons-material';
 import { getToken, setToken, getCurrentUser } from '../api/client';
 
@@ -40,11 +39,10 @@ export default function Layout() {
   const navItems = [
     { to: '/', label: '仪表盘', icon: <HomeIcon /> },
     { to: '/charts', label: '健康图表', icon: <ChartIcon /> },
-    { to: '/report', label: 'AI 报告', icon: <ReportIcon /> },
-    { to: '/recommendations', label: '个性建议', icon: <BulbIcon /> },
     { to: '/meals', label: '就餐记录', icon: <MealIcon /> },
     { to: '/trajectory', label: '实时轨迹', icon: <TimelineIcon /> },
     { to: '/devices', label: '设备管理', icon: <DeviceIcon /> },
+    { to: '/alerts', label: '预警功能', icon: <AlertIcon /> },
     { to: '/communities', label: '圈子社区', icon: <CommunityIcon /> },
     { to: '/profile', label: '个人信息', icon: <ProfileIcon /> }
   ];

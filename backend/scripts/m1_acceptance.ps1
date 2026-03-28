@@ -110,3 +110,4 @@ finally {
         Stop-Process -Id $server.Id -Force
     }
 }
+

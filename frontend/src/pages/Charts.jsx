@@ -114,7 +114,7 @@ function aggregateIntakeByCalendarWeek(start_date, end_date, intake) {
  * @param {string} startStr
  * @param {string} endStr
  * @param {number} [maxPages]
- * @returns {Promise<Array<{ start_time: string, duration_minutes?: number }>>}
+ * @returns {Promise<Array<{ meal_id: string, start_time: string, duration_minutes?: number, total_meal_cal?: number }>>}
  */
 async function fetchMealsInLocalDateRange(startStr, endStr, maxPages = 100) {
   const rangeStart = new Date(`${startStr}T00:00:00`);
@@ -122,7 +122,7 @@ async function fetchMealsInLocalDateRange(startStr, endStr, maxPages = 100) {
   if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime()) || rangeStart > rangeEnd) {
     return [];
   }
-  /** @type {Array<{ start_time: string, duration_minutes?: number }>} */
+  /** @type {Array<{ meal_id: string, start_time: string, duration_minutes?: number, total_meal_cal?: number }>} */
   const out = [];
   let cursor = undefined;
   for (let p = 0; p < maxPages; p += 1) {
@@ -216,11 +216,17 @@ function buildDailyThreeMealDurationSeries(start_date, end_date, meals) {
   return { labels, breakfast, lunch, dinner };
 }
 
-// 限制饼图数据点数量，防止浏览器卡死
-function limitPieData(dates, calories, maxItems = 7) {
-  const data = dates.map((date, i) => ({
-    name: date,
-    value: Number(calories[i]) || 0,
+/**
+ * 限制饼图扇区数量；`labels` 与 `values` 一一对应（可为日期或餐次标签）。
+ *
+ * @param {string[]} labels
+ * @param {number[]} values
+ * @param {number} [maxItems]
+ */
+function limitPieData(labels, values, maxItems = 7) {
+  const data = labels.map((name, i) => ({
+    name,
+    value: Number(values[i]) || 0,
     originalIndex: i
   })).filter(item => item.value > 0);
   
@@ -240,6 +246,57 @@ function limitPieData(dates, calories, maxItems = 7) {
     ...topItems,
     { name: '其他', value: Number(otherValue.toFixed(1)), isOther: true }
   ];
+}
+
+/**
+ * 用于饼图图例的「月-日 时:分」展示基名（本地时间）。
+ *
+ * @param {string} iso
+ * @returns {string | null}
+ */
+function mealCaloriePieDisplayBase(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const t = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${md} ${t}`;
+}
+
+/**
+ * 按每餐 `total_meal_cal` 生成饼图输入（不用 statistics 按日汇总，避免同一天多餐合成一块）。
+ *
+ * @param {Array<{ start_time: string, total_meal_cal?: number }>} meals
+ * @param {number} maxSlices
+ * @returns {{ pieData: { name: string, value: number }[] }}
+ */
+function buildPerMealCaloriePieData(meals, maxSlices = 16) {
+  /** @type {Map<string, number>} */
+  const baseCounts = new Map();
+  const names = [];
+  const values = [];
+  let fallbackIdx = 0;
+  for (const m of meals) {
+    const cal = Number(m.total_meal_cal);
+    if (!Number.isFinite(cal) || cal <= 0) continue;
+    const base = mealCaloriePieDisplayBase(m.start_time);
+    let label;
+    if (!base) {
+      fallbackIdx += 1;
+      label = `餐次 ${fallbackIdx}`;
+    } else {
+      const n = (baseCounts.get(base) || 0) + 1;
+      baseCounts.set(base, n);
+      label = n === 1 ? base : `${base} #${n}`;
+    }
+    names.push(label);
+    values.push(Math.round(cal * 10) / 10);
+  }
+  const sortedIdx = names.map((_, i) => i).sort((a, b) => values[b] - values[a]);
+  const sn = sortedIdx.map((i) => names[i]);
+  const sv = sortedIdx.map((i) => values[i]);
+  const limited = limitPieData(sn, sv, maxSlices);
+  const pieData = limited.map(({ name, value }) => ({ name, value }));
+  return { pieData };
 }
 
 function useChartOption(chartType, start_date, end_date) {
@@ -347,6 +404,44 @@ function useChartOption(chartType, start_date, end_date) {
         return;
       }
 
+      if (chartType === 'nutrition_pie') {
+        const meals = await fetchMealsInLocalDateRange(start_date, end_date);
+        const { pieData } = buildPerMealCaloriePieData(meals, 16);
+        if (pieData.length === 0) {
+          setIsEmpty(true);
+          setOption({});
+          return;
+        }
+        setIsEmpty(false);
+        setOption({
+          tooltip: {
+            trigger: 'item',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            borderColor: '#E2E8F0',
+            borderRadius: 8,
+            formatter: (p) => {
+              const v = p.value;
+              const num = typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : String(v);
+              const pct = typeof p.percent === 'number' ? p.percent.toFixed(1) : '';
+              return `${p.marker}${p.name}<br/>${num} kcal${pct !== '' ? ` (${pct}%)` : ''}`;
+            },
+          },
+          legend: { type: 'scroll', bottom: 0, textStyle: { color: '#64748B' } },
+          color: ['#00BFA5', '#4F46E5', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'],
+          series: [{
+            type: 'pie',
+            radius: ['40%', '70%'],
+            avoidLabelOverlap: false,
+            itemStyle: { borderWidth: 0, borderColor: 'transparent', borderRadius: 0 },
+            label: { show: false, position: 'center' },
+            emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
+            labelLine: { show: false },
+            data: pieData,
+          }],
+        });
+        return;
+      }
+
       const res = await fetchChartData({ start_date, end_date });
       // 严格按照 API 文档解析响应
       const root = res || {};
@@ -443,26 +538,6 @@ function useChartOption(chartType, start_date, end_date) {
           xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
           yAxis: { type: 'value', name: 'g/min', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
           series: [{ name: '平均速度', type: 'line', data: speeds, smooth: true }]
-        });
-      } else if (chartType === 'nutrition_pie') {
-        const pieData = dates.map((dLabel, i) => ({
-          name: dLabel,
-          value: Number(calories[i] || 0)
-        }));
-        setOption({
-          tooltip: { trigger: 'item', backgroundColor: 'rgba(255, 255, 255, 0.9)', borderColor: '#E2E8F0', borderRadius: 8 },
-          legend: { bottom: 0, textStyle: { color: '#64748B' } },
-          color: ['#00BFA5', '#4F46E5', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'],
-          series: [{ 
-            type: 'pie', 
-            radius: ['40%', '70%'], 
-            avoidLabelOverlap: false,
-            itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
-            label: { show: false, position: 'center' },
-            emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
-            labelLine: { show: false },
-            data: pieData 
-          }]
         });
       } else {
         setOption({});
@@ -598,6 +673,12 @@ function ChartSection({ chartType, start_date, end_date }) {
                 按<strong>本地开餐时刻</strong>划入：早餐 5:00–11:00、午餐 11:00–15:00、晚餐为其余时段；同一时段多餐则<strong>时长累加</strong>。
               </Typography>
             )}
+            {chartType === 'nutrition_pie' && (
+              <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mt: 0.5 }}>
+                每一扇区对应<strong>一餐</strong>的累计卡路里（接口字段 total_meal_cal），与云端统计按<strong>自然日</strong>汇总不同；同一天多餐会显示为多块。
+                餐次过多时合并为「其他」；分页未拉全则可能漏餐。
+              </Typography>
+            )}
           </Box>
           <Tooltip title="重新加载">
             <IconButton onClick={load} disabled={loading} size="small" sx={{ bgcolor: 'rgba(0,0,0,0.04)' }}>
@@ -610,7 +691,9 @@ function ChartSection({ chartType, start_date, end_date }) {
           <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
             {chartType === 'meal_times'
               ? '所选日期范围内无有效数据：无就餐记录、duration_minutes 为空，或分页未覆盖全部历史。'
-              : '当前时间范围内暂无数据。'}
+              : chartType === 'nutrition_pie'
+                ? '所选日期范围内无有效数据：无就餐记录、total_meal_cal 为 0 或未返回，或分页未覆盖全部历史。'
+                : '当前时间范围内暂无数据。'}
           </Alert>
         )}
         <Box sx={{ width: '100%', height: 320, opacity: (loading || isEmpty) ? 0.3 : 1, transition: 'opacity 0.3s' }}>

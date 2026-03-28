@@ -546,7 +546,7 @@ export default function Profile() {
                 </Box>
               ) : aiAdvice?.daily ? (
                 <Box>
-                  <Typography variant="body1" sx={{ lineHeight: 1.8, color: '#1E293B' }}>
+                  <Typography variant="body1" sx={{ lineHeight: 1.8, color: '#1E293B', whiteSpace: 'pre-wrap' }}>
                     {aiAdvice.daily.advice}
                   </Typography>
                   {aiAdvice.daily.is_alert && (
@@ -581,7 +581,7 @@ export default function Profile() {
                   <CircularProgress size={24} sx={{ color: '#00BFA5' }} />
                 </Box>
               ) : aiAdvice?.next ? (
-                <Typography variant="body1" sx={{ lineHeight: 1.8, color: '#1E293B' }}>
+                <Typography variant="body1" sx={{ lineHeight: 1.8, color: '#1E293B', whiteSpace: 'pre-wrap' }}>
                   {aiAdvice.next.advice}
                 </Typography>
               ) : (

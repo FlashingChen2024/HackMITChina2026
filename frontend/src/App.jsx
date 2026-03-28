@@ -2,12 +2,11 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './layout/Layout';
 import Home from './pages/Home';
 import Charts from './pages/Charts';
-import Report from './pages/Report';
-import Recommendations from './pages/Recommendations';
 import Meals from './pages/Meals';
 import Devices from './pages/Devices';
 import Communities from './pages/Communities';
 import Profile from './pages/Profile';
+import AlertSettings from './pages/AlertSettings';
 import Login from './pages/Login';
 import MealTrajectory from './pages/MealTrajectory';
 import { getToken } from './api/client';
@@ -26,12 +25,11 @@ export default function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="charts" element={<RequireAuth><Charts /></RequireAuth>} />
-        <Route path="report" element={<RequireAuth><Report /></RequireAuth>} />
-        <Route path="recommendations" element={<RequireAuth><Recommendations /></RequireAuth>} />
         <Route path="meals" element={<RequireAuth><Meals /></RequireAuth>} />
         <Route path="meals/:mealId/trajectory" element={<RequireAuth><MealTrajectory /></RequireAuth>} />
         <Route path="trajectory" element={<RequireAuth><MealTrajectory /></RequireAuth>} />
         <Route path="devices" element={<RequireAuth><Devices /></RequireAuth>} />
+        <Route path="alerts" element={<RequireAuth><AlertSettings /></RequireAuth>} />
         <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="communities" element={<RequireAuth><Communities /></RequireAuth>} />
       </Route>
