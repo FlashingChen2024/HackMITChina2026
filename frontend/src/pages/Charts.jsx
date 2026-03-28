@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Alert, Box, Card, CardContent, Grid, TextField, Typography, Chip, IconButton, Tooltip } from '@mui/material';
 import { Refresh as RefreshIcon, DateRange as DateIcon } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
@@ -12,42 +12,208 @@ const CHART_LABELS = {
   waste_analysis: '浪费率分析',
   speed_analysis: '用餐速度分析',
   nutrition_pie: '营养摄入（卡路里占比）',
-  meal_times: '每餐用餐时长',
+  meal_times: '三餐用餐时长',
 };
 
-// 将数据按周聚合
-function aggregateByWeek(dates, values) {
-  const weekMap = new Map();
-  
-  dates.forEach((date, index) => {
-    const d = new Date(date);
-    // 获取该日期所在周的周一
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(d.setDate(diff));
-    const weekKey = monday.toISOString().slice(0, 10);
-    const weekLabel = `${monday.getMonth() + 1}/${monday.getDate()}`;
-    
-    if (!weekMap.has(weekKey)) {
-      weekMap.set(weekKey, { label: weekLabel, values: [], total: 0 });
-    }
-    const week = weekMap.get(weekKey);
-    week.values.push(Number(values[index]) || 0);
-    week.total += Number(values[index]) || 0;
-  });
-  
-  // 转换为数组并排序
-  const sorted = Array.from(weekMap.entries())
-    .sort((a, b) => new Date(a[0]) - new Date(b[0]));
-  
+/**
+ * 枚举起止日期内每一天（本地日历），含首尾。
+ *
+ * @param {string} startStr `YYYY-MM-DD`
+ * @param {string} endStr `YYYY-MM-DD`
+ * @returns {Date[]}
+ */
+function enumerateDaysInclusive(startStr, endStr) {
+  const out = [];
+  const cur = new Date(`${startStr}T12:00:00`);
+  const end = new Date(`${endStr}T12:00:00`);
+  if (Number.isNaN(cur.getTime()) || Number.isNaN(end.getTime()) || cur > end) return out;
+  for (let d = new Date(cur); d <= end; d.setDate(d.getDate() + 1)) {
+    out.push(new Date(d));
+  }
+  return out;
+}
+
+/**
+ * @param {string} iso
+ * @returns {string}
+ */
+function localDayKeyFromIso(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * @param {Date} dt
+ * @returns {string}
+ */
+function localDayKeyFromDate(dt) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * @param {Date} d
+ * @returns {Date}
+ */
+function startOfWeekMonday(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = x.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+
+/**
+ * @param {Date} weekMonday
+ * @returns {string}
+ */
+function formatWeekRangeLabel(weekMonday) {
+  const sun = new Date(weekMonday);
+  sun.setDate(sun.getDate() + 6);
+  const fmt = (dt) => `${dt.getMonth() + 1}/${dt.getDate()}`;
+  return `${fmt(weekMonday)}–${fmt(sun)}`;
+}
+
+/**
+ * 按自然周汇总每日摄入量，得到「每周一根柱」。
+ *
+ * @param {string} start_date
+ * @param {string} end_date
+ * @param {number[]} intake
+ * @returns {{ weekLabels: string[], weeklyIntake: number[] }}
+ */
+function aggregateIntakeByCalendarWeek(start_date, end_date, intake) {
+  const days = enumerateDaysInclusive(start_date, end_date);
+  const len = Math.min(days.length, intake.length);
+  /** @type {Map<string, { monday: Date, sum: number }>} */
+  const map = new Map();
+  for (let i = 0; i < len; i++) {
+    const monday = startOfWeekMonday(days[i]);
+    const key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+    const prev = map.get(key);
+    const add = Number(intake[i]) || 0;
+    if (prev) prev.sum += add;
+    else map.set(key, { monday: new Date(monday), sum: add });
+  }
+  const entries = [...map.entries()].sort((a, b) => a[1].monday.getTime() - b[1].monday.getTime());
   return {
-    labels: sorted.map(([_, data]) => data.label),
-    // 周对比显示平均摄入量
-    values: sorted.map(([_, data]) => 
-      data.values.length > 0 ? Number((data.total / data.values.length).toFixed(1)) : 0
-    ),
-    totals: sorted.map(([_, data]) => Number(data.total.toFixed(1)))
+    weekLabels: entries.map(([, v]) => formatWeekRangeLabel(v.monday)),
+    weeklyIntake: entries.map(([, v]) => Math.round(v.sum * 10) / 10),
   };
+}
+
+/**
+ * 分页拉取 `/meals`，收集本地日期区间内的餐次。
+ *
+ * @param {string} startStr
+ * @param {string} endStr
+ * @param {number} [maxPages]
+ * @returns {Promise<Array<{ start_time: string, duration_minutes?: number }>>}
+ */
+async function fetchMealsInLocalDateRange(startStr, endStr, maxPages = 100) {
+  const rangeStart = new Date(`${startStr}T00:00:00`);
+  const rangeEnd = new Date(`${endStr}T23:59:59.999`);
+  if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime()) || rangeStart > rangeEnd) {
+    return [];
+  }
+  /** @type {Array<{ start_time: string, duration_minutes?: number }>} */
+  const out = [];
+  let cursor = undefined;
+  for (let p = 0; p < maxPages; p += 1) {
+    const res = await fetchMeals({ cursor, limit: 20 });
+    const items = res.items || [];
+    if (items.length === 0) break;
+    for (const it of items) {
+      const t = new Date(it.start_time);
+      if (t >= rangeStart && t <= rangeEnd) out.push(it);
+    }
+    const last = items[items.length - 1];
+    const lastT = new Date(last.start_time);
+    if (lastT < rangeStart) break;
+    if (!res.next_cursor) break;
+    cursor = res.next_cursor;
+  }
+  return out;
+}
+
+/**
+ * 用餐时长（分钟）：后端由结束时间与开始时间得到，对应 `duration_minutes`。
+ *
+ * @param {{ duration_minutes?: number }} m
+ * @returns {number | null}
+ */
+function mealDurationMinutesFromRecord(m) {
+  const d = Number(m.duration_minutes);
+  if (!Number.isFinite(d) || d < 0) return null;
+  return Math.round(d * 10) / 10;
+}
+
+/**
+ * 按本地开餐时刻划入：早餐 5≤h&lt;11，午餐 11≤h&lt;15，晚餐（含午后与夜宵）其余时段。
+ *
+ * @param {string} iso
+ * @returns {'breakfast' | 'lunch' | 'dinner'}
+ */
+function classifyThreeMealsLocal(iso) {
+  const h = new Date(iso).getHours();
+  if (h >= 5 && h < 11) return 'breakfast';
+  if (h >= 11 && h < 15) return 'lunch';
+  return 'dinner';
+}
+
+/**
+ * 逐日三条序列：早餐 / 午餐 / 晚餐累计用餐时长（分钟）；同一时段多餐则时长相加。
+ *
+ * @param {string} start_date
+ * @param {string} end_date
+ * @param {Array<{ start_time: string, duration_minutes?: number }>} meals
+ * @returns {{ labels: string[], breakfast: (number|null)[], lunch: (number|null)[], dinner: (number|null)[] }}
+ */
+function buildDailyThreeMealDurationSeries(start_date, end_date, meals) {
+  const days = enumerateDaysInclusive(start_date, end_date);
+  /** @type {Map<string, { breakfast: number, lunch: number, dinner: number }>} */
+  const byDay = new Map();
+
+  for (const m of meals) {
+    const key = localDayKeyFromIso(m.start_time);
+    if (!key || key < start_date || key > end_date) continue;
+    const mins = mealDurationMinutesFromRecord(m);
+    if (mins == null) continue;
+    const slot = classifyThreeMealsLocal(m.start_time);
+    if (!byDay.has(key)) {
+      byDay.set(key, { breakfast: 0, lunch: 0, dinner: 0 });
+    }
+    const row = byDay.get(key);
+    row[slot] += mins;
+  }
+
+  const labels = [];
+  const breakfast = [];
+  const lunch = [];
+  const dinner = [];
+  const roundOrNull = (x) => (x > 0 ? Math.round(x * 10) / 10 : null);
+
+  for (const d of days) {
+    const key = localDayKeyFromDate(d);
+    labels.push(`${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    const row = byDay.get(key);
+    if (!row) {
+      breakfast.push(null);
+      lunch.push(null);
+      dinner.push(null);
+    } else {
+      breakfast.push(roundOrNull(row.breakfast));
+      lunch.push(roundOrNull(row.lunch));
+      dinner.push(roundOrNull(row.dinner));
+    }
+  }
+  return { labels, breakfast, lunch, dinner };
 }
 
 // 限制饼图数据点数量，防止浏览器卡死
@@ -81,8 +247,6 @@ function useChartOption(chartType, start_date, end_date) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isEmpty, setIsEmpty] = useState(false);
-  const [rawData, setRawData] = useState(null);
-
   const load = useCallback(async () => {
     if (!start_date || !end_date) return;
     if (new Date(start_date) > new Date(end_date)) return;
@@ -93,24 +257,29 @@ function useChartOption(chartType, start_date, end_date) {
     try {
       if (chartType === 'meal_times') {
         const meals = await fetchMealsInLocalDateRange(start_date, end_date);
-        const { labels, dur1, dur2, dur3 } = buildDailyMealDurationSeries(start_date, end_date, meals);
+        const { labels, breakfast, lunch, dinner } = buildDailyThreeMealDurationSeries(
+          start_date,
+          end_date,
+          meals,
+        );
 
         const hasAny =
-          dur1.some((v) => v != null) || dur2.some((v) => v != null) || dur3.some((v) => v != null);
+          breakfast.some((v) => v != null)
+          || lunch.some((v) => v != null)
+          || dinner.some((v) => v != null);
         if (!hasAny) {
           setIsEmpty(true);
           setOption({});
           return;
         }
 
-        setIsEmpty(false);
-        setOption({
+        const baseMeal = {
           tooltip: {
             trigger: 'axis',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
             borderColor: '#E2E8F0',
-            borderRadius: 8,
             textStyle: { color: '#1E293B' },
+            borderRadius: 8,
             formatter: (params) => {
               if (!Array.isArray(params) || params.length === 0) return '';
               const ax = params[0].axisValue;
@@ -124,8 +293,13 @@ function useChartOption(chartType, start_date, end_date) {
             },
           },
           legend: { bottom: 0, itemWidth: 12, itemHeight: 12, textStyle: { color: '#64748B' } },
-          grid: { left: '3%', right: '5%', bottom: '12%', top: '10%', containLabel: true },
-          color: ['#06B6D4', '#7C3AED', '#F59E0B'],
+          grid: { left: '3%', right: '4%', bottom: '10%', top: '10%', containLabel: true },
+        };
+
+        setIsEmpty(false);
+        setOption({
+          ...baseMeal,
+          color: ['#00BFA5', '#4F46E5', '#F59E0B'],
           xAxis: {
             type: 'category',
             data: labels,
@@ -135,38 +309,38 @@ function useChartOption(chartType, start_date, end_date) {
           },
           yAxis: {
             type: 'value',
-            name: '用餐时长 (分钟)',
+            name: '分钟',
             nameTextStyle: { color: '#64748B' },
             splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } },
             axisLabel: { color: '#64748B' },
           },
           series: [
             {
-              name: '第1餐',
+              name: '早餐',
               type: 'line',
+              data: breakfast,
               smooth: true,
               showSymbol: true,
               connectNulls: false,
-              data: dur1,
-              areaStyle: { opacity: 0.06 },
+              areaStyle: { opacity: 0.1 },
             },
             {
-              name: '第2餐',
+              name: '午餐',
               type: 'line',
+              data: lunch,
               smooth: true,
               showSymbol: true,
               connectNulls: false,
-              data: dur2,
-              areaStyle: { opacity: 0.06 },
+              areaStyle: { opacity: 0.1 },
             },
             {
-              name: '第3餐',
+              name: '晚餐',
               type: 'line',
+              data: dinner,
               smooth: true,
               showSymbol: true,
               connectNulls: false,
-              data: dur3,
-              areaStyle: { opacity: 0.06 },
+              areaStyle: { opacity: 0.1 },
             },
           ],
         });
@@ -185,8 +359,6 @@ function useChartOption(chartType, start_date, end_date) {
       const calories = d.daily_calories || [];
       const speeds = d.avg_speed_g_per_min || [];
       
-      setRawData({ dates, served, intake, calories, speeds });
-
       let hasData =
         dates.length > 0 &&
         (served.some(v => v != null && v>0) ||
@@ -422,7 +594,8 @@ function ChartSection({ chartType, start_date, end_date }) {
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B' }}>{CHART_LABELS[chartType]}</Typography>
             {chartType === 'meal_times' && (
               <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mt: 0.5 }}>
-                按所选起止日（本地）逐日统计：每天按<strong>开餐先后</strong>取第 1～3 餐，纵轴为各餐<strong>用餐时长</strong>（分钟，来自就餐记录中的用餐时长字段）。
+                与日趋势相同为按日折线。每餐时长为<strong>结束时间 − 开始时间</strong>（分钟，对应记录中的 duration_minutes）。
+                按<strong>本地开餐时刻</strong>划入：早餐 5:00–11:00、午餐 11:00–15:00、晚餐为其余时段；同一时段多餐则<strong>时长累加</strong>。
               </Typography>
             )}
           </Box>
@@ -436,7 +609,7 @@ function ChartSection({ chartType, start_date, end_date }) {
         {!loading && !error && isEmpty && (
           <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
             {chartType === 'meal_times'
-              ? '所选日期范围内无有效用餐时长数据（无就餐记录、或未返回 duration_minutes），或分页未覆盖全部历史。'
+              ? '所选日期范围内无有效数据：无就餐记录、duration_minutes 为空，或分页未覆盖全部历史。'
               : '当前时间范围内暂无数据。'}
           </Alert>
         )}
