@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Avatar,
@@ -31,6 +31,10 @@ function TabPanel({ children, value, index }) {
   );
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function formatGrams(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';

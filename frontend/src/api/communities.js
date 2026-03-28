@@ -1,4 +1,4 @@
-﻿import { get, post } from './client';
+import { get, post } from './client';
 
 /**
  * POST /communities/create
@@ -30,4 +30,3 @@ export function getCommunityDashboard(communityId) {
 
 // Backward compatibility alias for older page imports.
 export const fetchCommunityDashboard = getCommunityDashboard;
-
