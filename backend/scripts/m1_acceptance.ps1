@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+﻿<#  #>$ErrorActionPreference = "Stop"
 
 $env:HTTP_PORT = "8080"
 $env:MYSQL_DSN = "root:963487158835@tcp(127.0.0.1:3306)/kxyz?charset=utf8mb4&parseTime=True&loc=Local"
