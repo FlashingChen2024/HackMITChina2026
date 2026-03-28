@@ -46,24 +46,25 @@ export default function Home() {
   });
 
   useEffect(() => {
-    async function loadData() {
+    /**
+     * @param {{ silent?: boolean }} opts 定时刷新时不显示全页 loading，避免数字与进度条周期性闪动
+     */
+    async function loadData(opts = {}) {
+      const silent = !!opts.silent;
       try {
-        setLoading(true);
-        
-        // 获取设备列表和用餐记录
+        if (!silent) setLoading(true);
+
         const [devicesRes, mealsRes] = await Promise.all([
           listBindings(),
           fetchMeals({ limit: 1 }),
         ]);
-        
+
         setDevices(devicesRes.devices || []);
-        
-        // 获取最新用餐详情
+
         if (mealsRes.items && mealsRes.items.length > 0) {
           const latest = mealsRes.items[0];
           setLatestMeal(latest);
-          
-          // 计算统计数据
+
           if (latest.start_time) {
             setStats({
               totalTime: formatDuration(latest.start_time),
@@ -74,14 +75,13 @@ export default function Home() {
       } catch (err) {
         console.error('加载首页数据失败:', err);
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     }
-    
-    loadData();
-    
-    // 每30秒刷新一次
-    const timer = setInterval(loadData, 30000);
+
+    loadData({ silent: false });
+
+    const timer = setInterval(() => loadData({ silent: true }), 30000);
     return () => clearInterval(timer);
   }, []);
 
