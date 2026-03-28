@@ -4,8 +4,15 @@
 
 import { get } from './client';
 
-// 保持前端原有 5 种图表类型，方便复用 UI
-const CHART_TYPES = ['daily_trend', 'weekly_comparison', 'waste_analysis', 'speed_analysis', 'nutrition_pie'];
+// 图表类型（含「每餐用餐时长」三条曲线：第 1～3 餐，数据来自 /meals）
+const CHART_TYPES = [
+  'daily_trend',
+  'weekly_comparison',
+  'waste_analysis',
+  'speed_analysis',
+  'nutrition_pie',
+  'meal_times',
+];
 
 /**
  * 请求图表数据（云端 /users/me/statistics/charts）

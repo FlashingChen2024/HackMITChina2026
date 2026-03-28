@@ -36,6 +36,10 @@ function TabPanel({ children, value, index }) {
   );
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function formatGrams(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '-';

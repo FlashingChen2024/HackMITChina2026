@@ -3,6 +3,7 @@ import { Alert, Box, Card, CardContent, Grid, TextField, Typography, Chip, IconB
 import { Refresh as RefreshIcon, DateRange as DateIcon } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
 import { fetchChartData, CHART_TYPES } from '../api/charts';
+import { fetchMeals } from '../api/meals';
 import ChartBlock from '../components/ChartBlock';
 
 const CHART_LABELS = {
@@ -10,7 +11,8 @@ const CHART_LABELS = {
   weekly_comparison: '周对比',
   waste_analysis: '浪费率分析',
   speed_analysis: '用餐速度分析',
-  nutrition_pie: '营养摄入（卡路里占比）'
+  nutrition_pie: '营养摄入（卡路里占比）',
+  meal_times: '每餐用餐时长',
 };
 
 // 将数据按周聚合
@@ -89,6 +91,88 @@ function useChartOption(chartType, start_date, end_date) {
     setError(null);
     setIsEmpty(false);
     try {
+      if (chartType === 'meal_times') {
+        const meals = await fetchMealsInLocalDateRange(start_date, end_date);
+        const { labels, dur1, dur2, dur3 } = buildDailyMealDurationSeries(start_date, end_date, meals);
+
+        const hasAny =
+          dur1.some((v) => v != null) || dur2.some((v) => v != null) || dur3.some((v) => v != null);
+        if (!hasAny) {
+          setIsEmpty(true);
+          setOption({});
+          return;
+        }
+
+        setIsEmpty(false);
+        setOption({
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderColor: '#E2E8F0',
+            borderRadius: 8,
+            textStyle: { color: '#1E293B' },
+            formatter: (params) => {
+              if (!Array.isArray(params) || params.length === 0) return '';
+              const ax = params[0].axisValue;
+              const lines = [`<strong>${ax}</strong>`];
+              for (const p of params) {
+                const v = p.value;
+                const txt = typeof v === 'number' && Number.isFinite(v) ? `${v} 分钟` : '—';
+                lines.push(`${p.marker}${p.seriesName}：${txt}`);
+              }
+              return lines.join('<br/>');
+            },
+          },
+          legend: { bottom: 0, itemWidth: 12, itemHeight: 12, textStyle: { color: '#64748B' } },
+          grid: { left: '3%', right: '5%', bottom: '12%', top: '10%', containLabel: true },
+          color: ['#06B6D4', '#7C3AED', '#F59E0B'],
+          xAxis: {
+            type: 'category',
+            data: labels,
+            axisLine: { lineStyle: { color: '#E2E8F0' } },
+            axisLabel: { color: '#64748B' },
+            boundaryGap: false,
+          },
+          yAxis: {
+            type: 'value',
+            name: '用餐时长 (分钟)',
+            nameTextStyle: { color: '#64748B' },
+            splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } },
+            axisLabel: { color: '#64748B' },
+          },
+          series: [
+            {
+              name: '第1餐',
+              type: 'line',
+              smooth: true,
+              showSymbol: true,
+              connectNulls: false,
+              data: dur1,
+              areaStyle: { opacity: 0.06 },
+            },
+            {
+              name: '第2餐',
+              type: 'line',
+              smooth: true,
+              showSymbol: true,
+              connectNulls: false,
+              data: dur2,
+              areaStyle: { opacity: 0.06 },
+            },
+            {
+              name: '第3餐',
+              type: 'line',
+              smooth: true,
+              showSymbol: true,
+              connectNulls: false,
+              data: dur3,
+              areaStyle: { opacity: 0.06 },
+            },
+          ],
+        });
+        return;
+      }
+
       const res = await fetchChartData({ start_date, end_date });
       // 严格按照 API 文档解析响应
       const root = res || {};
@@ -103,13 +187,21 @@ function useChartOption(chartType, start_date, end_date) {
       
       setRawData({ dates, served, intake, calories, speeds });
 
-      const hasData = dates.length > 0 && (
-        served.some(v => v != null && v > 0) ||
-        intake.some(v => v != null && v > 0) ||
-        calories.some(v => v != null && v > 0) ||
-        speeds.some(v => v != null && v > 0)
-      );
-      
+      let hasData =
+        dates.length > 0 &&
+        (served.some(v => v != null && v>0) ||
+         intake.some(v => v != null) ||
+         calories.some(v => v != null) ||
+         speeds.some(v => v != null));
+
+      const { weekLabels, weeklyIntake } =
+        chartType === 'weekly_comparison'
+          ? aggregateIntakeByCalendarWeek(start_date, end_date, intake)
+          : { weekLabels: [], weeklyIntake: [] };
+
+      if (chartType === 'weekly_comparison') {
+        hasData = weekLabels.length > 0 && weeklyIntake.some((v) => v > 0);
+      }
       setIsEmpty(!hasData);
 
       const baseOption = {
@@ -126,182 +218,82 @@ function useChartOption(chartType, start_date, end_date) {
 
       if (!hasData) {
         setOption({});
-        setLoading(false);
-        return;
-      }
-
-      switch (chartType) {
-        case 'daily_trend': {
-          setOption({
-            ...baseOption,
-            color: ['#00BFA5', '#4F46E5'],
-            xAxis: { 
-              type: 'category', 
-              data: dates, 
-              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
-              axisLabel: { color: '#64748B' } 
-            },
-            yAxis: { 
-              type: 'value', 
-              name: 'g', 
-              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } }, 
-              nameTextStyle: { color: '#64748B' } 
-            },
-            series: [
-              { name: '打饭量', type: 'line', data: served, smooth: true, areaStyle: { opacity: 0.1 } },
-              { name: '摄入量', type: 'line', data: intake, smooth: true, areaStyle: { opacity: 0.1 } }
-            ]
-          });
-          break;
-        }
-        
-        case 'weekly_comparison': {
-          // 按周聚合数据
-          const weeklyData = aggregateByWeek(dates, intake);
-          
-          setOption({
-            ...baseOption,
-            color: ['#3B82F6'],
-            xAxis: { 
-              type: 'category', 
-              data: weeklyData.labels, 
-              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
-              axisLabel: { color: '#64748B' },
-              name: '周(开始日期)',
-              nameLocation: 'end',
-              nameTextStyle: { color: '#94A3B8', fontSize: 12 }
-            },
-            yAxis: { 
-              type: 'value', 
-              name: '平均摄入量(g)', 
-              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } },
-              nameTextStyle: { color: '#64748B' }
-            },
-            series: [{ 
-              name: '平均摄入量', 
-              type: 'bar', 
-              data: weeklyData.values, 
-              itemStyle: { borderRadius: [4, 4, 0, 0] },
-              barWidth: '50%'
-            }],
-            tooltip: {
-              ...baseOption.tooltip,
-              formatter: function(params) {
-                const idx = params[0].dataIndex;
-                return `
-                  <div style="font-weight:600">${params[0].name}</div>
-                  <div>平均摄入量: ${weeklyData.values[idx]} g</div>
-                  <div>周总摄入量: ${weeklyData.totals[idx]} g</div>
-                `;
-              }
-            }
-          });
-          break;
-        }
-        
-        case 'waste_analysis': {
-          // 计算浪费量 = 打饭量 - 摄入量
-          const waste = served.map((s, i) => {
-            const v = Number(s) - Number(intake[i] || 0);
-            return v > 0 ? Number(v.toFixed(1)) : 0;
-          });
-          
-          setOption({
-            ...baseOption,
-            color: ['#EF4444'],
-            xAxis: { 
-              type: 'category', 
-              data: dates, 
-              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
-              axisLabel: { color: '#64748B' } 
-            },
-            yAxis: { 
-              type: 'value', 
-              name: 'g', 
-              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } 
-            },
-            series: [{ 
-              name: '浪费量', 
-              type: 'line', 
-              data: waste, 
-              smooth: true, 
-              areaStyle: { opacity: 0.1 } 
-            }]
-          });
-          break;
-        }
-        
-        case 'speed_analysis': {
-          setOption({
-            ...baseOption,
-            color: ['#F59E0B'],
-            xAxis: { 
-              type: 'category', 
-              data: dates, 
-              axisLine: { lineStyle: { color: '#E2E8F0' } }, 
-              axisLabel: { color: '#64748B' } 
-            },
-            yAxis: { 
-              type: 'value', 
-              name: 'g/min', 
-              splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } 
-            },
-            series: [{ 
-              name: '平均速度', 
-              type: 'line', 
-              data: speeds, 
-              smooth: true 
-            }]
-          });
-          break;
-        }
-        
-        case 'nutrition_pie': {
-          // 限制饼图数据点数量，防止浏览器卡死
-          const pieData = limitPieData(dates, calories, 7);
-          
-          setOption({
-            tooltip: { 
-              trigger: 'item', 
-              backgroundColor: 'rgba(255, 255, 255, 0.9)', 
-              borderColor: '#E2E8F0', 
-              borderRadius: 8,
-              formatter: function(params) {
-                return `
-                  <div style="font-weight:600">${params.name}</div>
-                  <div>卡路里: ${params.value} kcal</div>
-                  <div>占比: ${params.percent}%</div>
-                `;
-              }
-            },
-            legend: { 
-              bottom: 0, 
-              textStyle: { color: '#64748B' },
-              type: 'scroll'
-            },
-            color: ['#00BFA5', '#4F46E5', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'],
-            series: [{ 
-              type: 'pie', 
-              radius: ['40%', '70%'], 
-              avoidLabelOverlap: true,
-              itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
-              label: { 
-                show: true, 
-                formatter: '{b}: {c}kcal',
-                fontSize: 11
-              },
-              emphasis: { 
-                label: { show: true, fontSize: 14, fontWeight: 'bold' } 
-              },
-              labelLine: { show: true },
-              data: pieData 
-            }]
-          });
-          break;
-        }
-        
-        default:
-          setOption({});
+      } else if (chartType === 'daily_trend') {
+        setOption({
+          ...baseOption,
+          color: ['#00BFA5', '#4F46E5'],
+          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
+          yAxis: { type: 'value', name: 'g', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } }, nameTextStyle: { color: '#64748B' } },
+          series: [
+            { name: '打饭量', type: 'line', data: served, smooth: true, areaStyle: { opacity: 0.1 } },
+            { name: '摄入量', type: 'line', data: intake, smooth: true, areaStyle: { opacity: 0.1 } }
+          ]
+        });
+      } else if (chartType === 'weekly_comparison') {
+        setOption({
+          ...baseOption,
+          color: ['#3B82F6'],
+          xAxis: {
+            type: 'category',
+            data: weekLabels,
+            axisLine: { lineStyle: { color: '#E2E8F0' } },
+            axisLabel: { color: '#64748B', interval: 0, rotate: weekLabels.length > 5 ? 30 : 0 },
+          },
+          yAxis: {
+            type: 'value',
+            name: '周累计 (g)',
+            splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } },
+            nameTextStyle: { color: '#64748B' },
+          },
+          series: [{
+            name: '周摄入量',
+            type: 'bar',
+            data: weeklyIntake,
+            itemStyle: { borderRadius: [4, 4, 0, 0] },
+          }],
+        });
+      } else if (chartType === 'waste_analysis') {
+        const waste = served.map((s, i) => {
+          const v = Number(s) - Number(intake[i] || 0);
+          return v > 0 ? v : 0;
+        });
+        setOption({
+          ...baseOption,
+          color: ['#EF4444'],
+          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
+          yAxis: { type: 'value', name: 'g', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
+          series: [{ name: '浪费量', type: 'line', data: waste, smooth: true, areaStyle: { opacity: 0.1 } }]
+        });
+      } else if (chartType === 'speed_analysis') {
+        setOption({
+          ...baseOption,
+          color: ['#F59E0B'],
+          xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B' } },
+          yAxis: { type: 'value', name: 'g/min', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } } },
+          series: [{ name: '平均速度', type: 'line', data: speeds, smooth: true }]
+        });
+      } else if (chartType === 'nutrition_pie') {
+        const pieData = dates.map((dLabel, i) => ({
+          name: dLabel,
+          value: Number(calories[i] || 0)
+        }));
+        setOption({
+          tooltip: { trigger: 'item', backgroundColor: 'rgba(255, 255, 255, 0.9)', borderColor: '#E2E8F0', borderRadius: 8 },
+          legend: { bottom: 0, textStyle: { color: '#64748B' } },
+          color: ['#00BFA5', '#4F46E5', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'],
+          series: [{ 
+            type: 'pie', 
+            radius: ['40%', '70%'], 
+            avoidLabelOverlap: false,
+            itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+            label: { show: false, position: 'center' },
+            emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
+            labelLine: { show: false },
+            data: pieData 
+          }]
+        });
+      } else {
+        setOption({});
       }
     } catch (e) {
       setError(e.message);
@@ -406,7 +398,7 @@ export default function Charts() {
 
       <Grid container spacing={3}>
         {CHART_TYPES.map(ct => (
-          <Grid item xs={12} md={ct === 'daily_trend' ? 12 : 6} key={ct}>
+          <Grid item xs={12} md={ct === 'daily_trend' || ct === 'meal_times' ? 12 : 6} key={ct}>
             <ChartSection
               chartType={ct}
               start_date={start_date}
@@ -425,8 +417,15 @@ function ChartSection({ chartType, start_date, end_date }) {
   return (
     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <CardContent sx={{ flex: 1, p: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B' }}>{CHART_LABELS[chartType]}</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, gap: 1 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B' }}>{CHART_LABELS[chartType]}</Typography>
+            {chartType === 'meal_times' && (
+              <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mt: 0.5 }}>
+                按所选起止日（本地）逐日统计：每天按<strong>开餐先后</strong>取第 1～3 餐，纵轴为各餐<strong>用餐时长</strong>（分钟，来自就餐记录中的用餐时长字段）。
+              </Typography>
+            )}
+          </Box>
           <Tooltip title="重新加载">
             <IconButton onClick={load} disabled={loading} size="small" sx={{ bgcolor: 'rgba(0,0,0,0.04)' }}>
               <RefreshIcon fontSize="small" sx={{ color: '#64748B' }} />
@@ -436,7 +435,9 @@ function ChartSection({ chartType, start_date, end_date }) {
         {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
         {!loading && !error && isEmpty && (
           <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-            当前时间范围内暂无数据。
+            {chartType === 'meal_times'
+              ? '所选日期范围内无有效用餐时长数据（无就餐记录、或未返回 duration_minutes），或分页未覆盖全部历史。'
+              : '当前时间范围内暂无数据。'}
           </Alert>
         )}
         <Box sx={{ width: '100%', height: 320, opacity: (loading || isEmpty) ? 0.3 : 1, transition: 'opacity 0.3s' }}>
