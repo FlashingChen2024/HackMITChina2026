@@ -31,6 +31,7 @@ import {
   TrendingUp as TrendIcon,
   Lightbulb as BulbIcon,
   CalendarToday as CalendarIcon,
+  BarChart as ChartIcon,
 } from '@mui/icons-material';
 import * as echarts from 'echarts';
 import { fetchProfile, updateProfile, normalizeProfilePayload } from '../api/profile';
@@ -515,8 +516,12 @@ export default function Profile() {
             <Box ref={chartRef} sx={{ height: 280, width: '100%' }} />
           ) : (
             <Box sx={{ textAlign: 'center', py: 8, bgcolor: '#F8FAFC', borderRadius: 2 }}>
-              <Typography variant="body2" sx={{ color: '#64748B' }}>
-                暂无图表数据，开始记录用餐后这里将显示趋势
+              <ChartIcon sx={{ fontSize: 48, color: '#94A3B8', mb: 2 }} />
+              <Typography variant="body1" sx={{ color: '#475569', fontWeight: 500, mb: 1 }}>
+                暂无饮食数据
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#94A3B8' }}>
+                开始记录用餐后，这里将显示您的饮食趋势图表
               </Typography>
             </Box>
           )}
