@@ -24,12 +24,12 @@ import {
   Add as AddIcon,
   Close as CloseIcon,
   NotificationsActive as AlertHeaderIcon,
-  ContactPhone as ContactHeaderIcon,
+  Email as ContactHeaderIcon,
   Tune as TuneIcon,
   AutoFixHigh as DefaultPresetIcon,
 } from '@mui/icons-material';
 
-/** @typedef {{ id: string, name: string, phone: string }} AlertContact */
+/** @typedef {{ id: string, name: string, email: string }} AlertContact */
 
 /** @typedef {'minute' | 'hour' | 'day' | 'week' | 'month'} TimeUnit */
 /** @typedef {'max' | 'min' | 'range'} BoundType */
@@ -332,7 +332,7 @@ export default function AlertSettings() {
   const [contacts, setContacts] = useState([]);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [draftName, setDraftName] = useState('');
-  const [draftPhone, setDraftPhone] = useState('');
+  const [draftEmail, setDraftEmail] = useState('');
 
   /** @type {[string | null, function]} */
   const [advancedDialogKey, setAdvancedDialogKey] = useState(null);
@@ -419,9 +419,19 @@ export default function AlertSettings() {
     setAdvancedDialogKey(null);
   };
 
+  /**
+   * @param {string} raw
+   * @returns {boolean}
+   */
+  const isLooseEmail = (raw) => {
+    const t = String(raw).trim();
+    if (!t) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+  };
+
   const openAddContactDialog = useCallback(() => {
     setDraftName('');
-    setDraftPhone('');
+    setDraftEmail('');
     setContactDialogOpen(true);
   }, []);
 
@@ -434,13 +444,14 @@ export default function AlertSettings() {
    */
   const confirmAddContact = () => {
     const name = draftName.trim();
-    if (!name) return;
+    const email = draftEmail.trim();
+    if (!name || !isLooseEmail(email)) return;
     setContacts((prev) => [
       ...prev,
       {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         name,
-        phone: draftPhone.trim(),
+        email,
       },
     ]);
     setContactDialogOpen(false);
@@ -468,7 +479,7 @@ export default function AlertSettings() {
           预警功能
         </Typography>
         <Typography variant="body1" sx={{ color: '#64748B' }}>
-          请先在「高级设置」中填写「每 N 单位时间 + 最大/最小/区间」规则，再勾选对应指标；并设置通知联系人
+          请先在「高级设置」中填写「每 N 单位时间 + 最大/最小/区间」规则，再勾选对应指标；并添加接收预警邮件的联系人
         </Typography>
       </Box>
 
@@ -692,13 +703,13 @@ export default function AlertSettings() {
               <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 3, minHeight: 44 }}>
                 {contacts.length === 0 ? (
                   <Typography variant="body2" sx={{ color: '#94A3B8', py: 1 }}>
-                    暂无联系人，点击下方按钮添加
+                    暂无通知邮箱，点击下方按钮添加
                   </Typography>
                 ) : (
                   contacts.map((c) => (
                     <Chip
                       key={c.id}
-                      label={c.phone ? `${c.name} · ${c.phone}` : c.name}
+                      label={c.email ? `${c.name} · ${c.email}` : c.name}
                       onDelete={() => removeContact(c.id)}
                       deleteIcon={<CloseIcon sx={{ fontSize: 18 }} />}
                       sx={{
@@ -731,7 +742,7 @@ export default function AlertSettings() {
                     },
                   }}
                 >
-                  添加联系人
+                  添加邮件联系人
                 </Button>
               </Box>
             </CardContent>
@@ -790,7 +801,7 @@ export default function AlertSettings() {
         onClose={closeAddContactDialog}
         PaperProps={{ sx: { borderRadius: 4, p: 0.5 } }}
       >
-        <DialogTitle sx={{ fontWeight: 800, color: '#1E293B' }}>添加联系人</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: '#1E293B' }}>添加邮件联系人</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1, minWidth: 300 }}>
             <TextField
@@ -802,12 +813,20 @@ export default function AlertSettings() {
               variant="outlined"
             />
             <TextField
-              label="手机（选填）"
-              value={draftPhone}
-              onChange={(e) => setDraftPhone(e.target.value)}
+              label="通知邮箱"
+              type="email"
+              value={draftEmail}
+              onChange={(e) => setDraftEmail(e.target.value)}
               fullWidth
               size="small"
               variant="outlined"
+              placeholder="name@example.com"
+              error={draftEmail.trim() !== '' && !isLooseEmail(draftEmail)}
+              helperText={
+                draftEmail.trim() !== '' && !isLooseEmail(draftEmail)
+                  ? '请输入有效邮箱地址'
+                  : '预警将发送至该邮箱'
+              }
             />
           </Stack>
         </DialogContent>
@@ -818,7 +837,7 @@ export default function AlertSettings() {
           <Button
             variant="contained"
             onClick={confirmAddContact}
-            disabled={!draftName.trim()}
+            disabled={!draftName.trim() || !isLooseEmail(draftEmail)}
             sx={{
               borderRadius: 2,
               px: 3,
