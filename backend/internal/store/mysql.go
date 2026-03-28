@@ -44,6 +44,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.DeviceBinding{},
 		&model.Community{},
 		&model.CommunityMember{},
+		&model.AlertSetting{},
 	); err != nil {
 		return fmt.Errorf("auto migrate models: %w", err)
 	}

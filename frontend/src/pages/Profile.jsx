@@ -13,13 +13,16 @@ import {
   Grid,
   Chip,
   Divider,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Save as SaveIcon,
   Refresh as RefreshIcon,
   MonitorHeart as HealthIcon,
+  Notifications as AlertIcon,
 } from '@mui/icons-material';
-import { fetchProfile, updateProfile, normalizeProfilePayload } from '../api/profile';
+import { fetchProfile, updateProfile, normalizeProfilePayload, fetchAlertSetting, updateAlertSetting } from '../api/profile';
 import { getCurrentUser } from '../api/client';
 
 const GENDER_OPTIONS = [
@@ -113,6 +116,11 @@ export default function Profile() {
   const [saveOk, setSaveOk] = useState('');
   const [serverProfile, setServerProfile] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [alertLoading, setAlertLoading] = useState(false);
+  const [alertSaving, setAlertSaving] = useState(false);
+  const [alertError, setAlertError] = useState('');
+  const [alertOk, setAlertOk] = useState('');
+  const [alertForm, setAlertForm] = useState({ email: '', enabled: false });
 
   /**
    * 将接口数据写入 `serverProfile`；`merge=true` 时与当前状态合并，避免空 GET 冲掉已保存数据。
@@ -197,6 +205,51 @@ export default function Profile() {
     load();
   }, [load]);
 
+  const loadAlertSetting = useCallback(async () => {
+    setAlertLoading(true);
+    setAlertError('');
+    try {
+      const data = await fetchAlertSetting();
+      setAlertForm({
+        email: data.email || '',
+        enabled: data.enabled || false,
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('404')) {
+        setAlertForm({ email: '', enabled: false });
+      } else {
+        setAlertError(e instanceof Error ? e.message : '加载告警设置失败');
+      }
+    } finally {
+      setAlertLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAlertSetting();
+  }, [loadAlertSetting]);
+
+  const handleAlertSave = async () => {
+    setAlertError('');
+    setAlertOk('');
+    if (alertForm.enabled && !alertForm.email.trim()) {
+      setAlertError('启用告警时必须填写邮箱地址');
+      return;
+    }
+    setAlertSaving(true);
+    try {
+      await updateAlertSetting({
+        email: alertForm.email.trim(),
+        enabled: alertForm.enabled,
+      });
+      setAlertOk('告警设置保存成功');
+    } catch (e) {
+      setAlertError(e instanceof Error ? e.message : '保存失败');
+    } finally {
+      setAlertSaving(false);
+    }
+  };
+
   const bmrPreview = useMemo(() => {
     const age = parseInt(form.age, 10);
     const height_cm = parseFloat(form.height_cm);
@@ -278,14 +331,14 @@ export default function Profile() {
       <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 0.5 }}>
-            用户画像
+            个人信息
           </Typography>
           <Typography variant="body2" sx={{ color: '#64748B' }}>
-            填写身高、体重等信息，为云端 AI 计算基础代谢与营养建议提供依据（API §8.1 / §8.2）。
+            填写身高、体重等信息，为云端 AI 计算基础代谢与营养建议提供依据。
           </Typography>
         </Box>
         <Button startIcon={<RefreshIcon />} variant="outlined" onClick={load} disabled={saving}>
-          重新拉取
+          刷新数据
         </Button>
       </Box>
 
@@ -442,13 +495,81 @@ export default function Profile() {
                   disabled={saving}
                   sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 3 }}
                 >
-                  {saving ? '保存中…' : '保存画像'}
+                  {saving ? '保存中…' : '保存信息'}
                 </Button>
               </Stack>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
+
+      {/* 告警设置 */}
+      <Card sx={{ mt: 3 }}>
+        <CardContent>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+            <AlertIcon color="primary" />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              告警设置
+            </Typography>
+          </Stack>
+          <Divider sx={{ mb: 2 }} />
+          {alertLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <>
+              {alertError && (
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAlertError('')}>
+                  {alertError}
+                </Alert>
+              )}
+              {alertOk && (
+                <Alert severity="success" sx={{ mb: 2 }} onClose={() => setAlertOk('')}>
+                  {alertOk}
+                </Alert>
+              )}
+              <Stack spacing={2.5}>
+                <TextField
+                  label="告警邮箱"
+                  type="email"
+                  value={alertForm.email}
+                  onChange={(e) => setAlertForm((f) => ({ ...f, email: e.target.value }))}
+                  fullWidth
+                  size="small"
+                  placeholder="example@email.com"
+                  helperText="接收健康告警通知的邮箱地址"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={alertForm.enabled}
+                      onChange={(e) => setAlertForm((f) => ({ ...f, enabled: e.target.checked }))}
+                      color="primary"
+                    />
+                  }
+                  label="启用邮箱告警"
+                />
+                <Alert severity="info" icon={<AlertIcon />}>
+                  <Typography variant="body2">
+                    启用后，系统将在检测到健康数据异常时发送邮件通知。
+                  </Typography>
+                </Alert>
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={alertSaving ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                  disabled={alertSaving}
+                  sx={{ alignSelf: 'flex-start', borderRadius: 2, px: 3 }}
+                  onClick={handleAlertSave}
+                >
+                  {alertSaving ? '保存中…' : '保存告警设置'}
+                </Button>
+              </Stack>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </Box>
   );
 }
