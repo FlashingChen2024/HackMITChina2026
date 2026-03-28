@@ -23,7 +23,10 @@ func buildRouter(jwtMiddleware gin.HandlerFunc) *gin.Engine {
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
+		func(c *gin.Context) { c.Status(http.StatusOK) },
 		jwtMiddleware,
+		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
 		func(c *gin.Context) { c.Status(http.StatusOK) },
@@ -63,6 +66,48 @@ func TestTelemetryRoute(t *testing.T) {
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+}
+
+func TestVisionAnalyzeRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := buildRouter(func(c *gin.Context) { c.Next() })
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/vision/analyze",
+		bytes.NewBufferString(`{"image_base64":"aGVsbG8="}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+}
+
+func TestVisionFoodLibraryRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := buildRouter(func(c *gin.Context) { c.Next() })
+
+	searchReq := httptest.NewRequest(http.MethodGet, "/api/v1/food-library/search?keyword=%E7%82%B8%E9%B8%A1", nil)
+	searchResp := httptest.NewRecorder()
+	router.ServeHTTP(searchResp, searchReq)
+	if searchResp.Code != http.StatusOK {
+		t.Fatalf("expected search status 200, got %d", searchResp.Code)
+	}
+
+	confirmReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/meals/meal-1/vision-confirm",
+		bytes.NewBufferString(`{"grids":[{"grid_index":1,"food_code":"FD001"}]}`),
+	)
+	confirmReq.Header.Set("Content-Type", "application/json")
+	confirmResp := httptest.NewRecorder()
+	router.ServeHTTP(confirmResp, confirmReq)
+	if confirmResp.Code != http.StatusOK {
+		t.Fatalf("expected vision confirm status 200, got %d", confirmResp.Code)
 	}
 }
 
@@ -200,6 +245,8 @@ func TestProtectedRoutesRequireJWT(t *testing.T) {
 		path   string
 		body   string
 	}{
+		{method: http.MethodPost, path: "/api/v1/vision/analyze", body: `{"image_base64":"aGVsbG8="}`},
+		{method: http.MethodGet, path: "/api/v1/food-library/search?keyword=%E7%82%B8%E9%B8%A1"},
 		{method: http.MethodGet, path: "/api/v1/test_auth"},
 		{method: http.MethodPost, path: "/api/v1/devices/bind", body: `{}`},
 		{method: http.MethodGet, path: "/api/v1/devices"},
@@ -212,6 +259,7 @@ func TestProtectedRoutesRequireJWT(t *testing.T) {
 		{method: http.MethodPut, path: "/api/v1/users/me/profile", body: `{"height_cm":170,"weight_kg":68.5,"gender":"male","age":25}`},
 		{method: http.MethodGet, path: "/api/v1/users/me/profile"},
 		{method: http.MethodPut, path: "/api/v1/meals/meal-1/foods", body: `{"grids":[]}`},
+		{method: http.MethodPost, path: "/api/v1/meals/meal-1/vision-confirm", body: `{"grids":[{"grid_index":1,"food_code":"FD001"}]}`},
 		{method: http.MethodPost, path: "/api/v1/communities/create", body: `{"name":"MIT","description":"demo"}`},
 		{method: http.MethodPost, path: "/api/v1/communities/community-1/join"},
 		{method: http.MethodGet, path: "/api/v1/communities"},
