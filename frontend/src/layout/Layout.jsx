@@ -36,7 +36,7 @@ export default function Layout() {
   const [anchorEl, setAnchorEl] = useState(null);
 
   const navItems = [
-    { to: '/', label: '仪表盘', icon: <HomeIcon /> },
+    { to: '/', label: '首页', icon: <HomeIcon /> },
     { to: '/charts', label: '健康图表', icon: <ChartIcon /> },
     { to: '/meals', label: '就餐记录', icon: <MealIcon /> },
     { to: '/devices', label: '设备管理', icon: <DeviceIcon /> },

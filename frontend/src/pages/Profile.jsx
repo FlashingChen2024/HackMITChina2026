@@ -83,6 +83,24 @@ function getDateRange(type) {
   };
 }
 
+/**
+ * 饮食趋势是否有可绘制数据（仅有日期、数值全 0 时仍视为无数据，避免空白图表被误认为卡顿）。
+ *
+ * @param {Array<{ calories?: number, intake?: number, served?: number }>} rows
+ * @returns {boolean}
+ */
+function trendRowsHavePlottableData(rows) {
+  if (!rows?.length) return false;
+  return rows.some((d) => {
+    const c = Number(d.calories);
+    const i = Number(d.intake);
+    const s = Number(d.served);
+    return (Number.isFinite(c) && c > 0)
+      || (Number.isFinite(i) && i > 0)
+      || (Number.isFinite(s) && s > 0);
+  });
+}
+
 export default function Profile() {
   const currentUser = getCurrentUser();
   const [loading, setLoading] = useState(true);
@@ -105,8 +123,14 @@ export default function Profile() {
   const [chartType, setChartType] = useState('day'); // 'day' | 'month'
   const [chartData, setChartData] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState('');
   const chartRef = useRef(null);
   const chartInstanceRef = useRef(null);
+
+  const trendHasPlottableData = useMemo(
+    () => trendRowsHavePlottableData(chartData),
+    [chartData],
+  );
 
   // AI建议
   const [aiAdvice, setAiAdvice] = useState(null);
@@ -145,6 +169,7 @@ export default function Profile() {
   // 加载图表数据
   const loadChartData = useCallback(async () => {
     setChartLoading(true);
+    setChartError('');
     try {
       const { start, end } = getDateRange(chartType);
       const res = await fetchChartData({ start_date: start, end_date: end });
@@ -161,6 +186,8 @@ export default function Profile() {
       setChartData(data);
     } catch (err) {
       console.error('加载图表失败:', err);
+      setChartData([]);
+      setChartError(err?.message || '加载饮食趋势失败，请稍后重试');
     } finally {
       setChartLoading(false);
     }
@@ -196,11 +223,7 @@ export default function Profile() {
     }
   }, [loading, chartType, loadChartData, loadAiAdvice]);
 
-  // 初始化 ECharts
   useEffect(() => {
-    if (chartRef.current && !chartInstanceRef.current) {
-      chartInstanceRef.current = echarts.init(chartRef.current);
-    }
     return () => {
       if (chartInstanceRef.current) {
         chartInstanceRef.current.dispose();
@@ -209,57 +232,74 @@ export default function Profile() {
     };
   }, []);
 
-  // 更新图表数据
+  /**
+   * 在 ref 已挂载且有可绘制数据时再 init/setOption，避免首屏 loading 结束时 ref 未就绪导致永久空白。
+   */
   useEffect(() => {
-    if (chartInstanceRef.current && chartData.length > 0) {
-      const option = {
-        grid: { top: 40, right: 20, bottom: 20, left: 50, containLabel: true },
-        tooltip: {
-          trigger: 'axis',
-          backgroundColor: 'white',
-          borderColor: '#E2E8F0',
-          borderWidth: 1,
-          textStyle: { color: '#1E293B' },
-        },
-        legend: { data: ['卡路里 (kcal)', '摄入量 (g)'], top: 0 },
-        xAxis: {
-          type: 'category',
-          data: chartData.map(d => d.date),
-          axisLine: { lineStyle: { color: '#E2E8F0' } },
-          axisLabel: { color: '#64748B', fontSize: 11 },
-        },
-        yAxis: {
-          type: 'value',
-          axisLine: { show: false },
-          splitLine: { lineStyle: { color: '#E2E8F0', type: 'dashed' } },
-          axisLabel: { color: '#64748B', fontSize: 11 },
-        },
-        series: [
-          {
-            name: '卡路里 (kcal)',
-            type: 'line',
-            data: chartData.map(d => d.calories),
-            smooth: true,
-            symbol: 'circle',
-            symbolSize: 6,
-            lineStyle: { color: '#00BFA5', width: 2 },
-            itemStyle: { color: '#00BFA5' },
-          },
-          {
-            name: '摄入量 (g)',
-            type: 'line',
-            data: chartData.map(d => d.intake),
-            smooth: true,
-            symbol: 'circle',
-            symbolSize: 6,
-            lineStyle: { color: '#3B82F6', width: 2 },
-            itemStyle: { color: '#3B82F6' },
-          },
-        ],
-      };
-      chartInstanceRef.current.setOption(option);
+    if (chartLoading || !trendHasPlottableData) {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.dispose();
+        chartInstanceRef.current = null;
+      }
+      return;
     }
-  }, [chartData]);
+
+    const el = chartRef.current;
+    if (!el) return;
+
+    if (!chartInstanceRef.current) {
+      chartInstanceRef.current = echarts.init(el);
+    }
+
+    const option = {
+      grid: { top: 40, right: 20, bottom: 20, left: 50, containLabel: true },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        borderColor: '#E2E8F0',
+        borderWidth: 1,
+        borderRadius: 8,
+        textStyle: { color: '#1E293B' },
+      },
+      legend: { data: ['卡路里 (kcal)', '摄入量 (g)'], top: 0 },
+      xAxis: {
+        type: 'category',
+        data: chartData.map((d) => d.date),
+        axisLine: { lineStyle: { color: '#E2E8F0' } },
+        axisLabel: { color: '#64748B', fontSize: 11 },
+      },
+      yAxis: {
+        type: 'value',
+        axisLine: { show: false },
+        splitLine: { lineStyle: { color: '#E2E8F0', type: 'dashed' } },
+        axisLabel: { color: '#64748B', fontSize: 11 },
+      },
+      series: [
+        {
+          name: '卡路里 (kcal)',
+          type: 'line',
+          data: chartData.map((d) => d.calories),
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 6,
+          lineStyle: { color: '#00BFA5', width: 2 },
+          itemStyle: { color: '#00BFA5' },
+        },
+        {
+          name: '摄入量 (g)',
+          type: 'line',
+          data: chartData.map((d) => d.intake),
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 6,
+          lineStyle: { color: '#3B82F6', width: 2 },
+          itemStyle: { color: '#3B82F6' },
+        },
+      ],
+    };
+    chartInstanceRef.current.setOption(option);
+    requestAnimationFrame(() => chartInstanceRef.current?.resize());
+  }, [chartData, chartLoading, trendHasPlottableData]);
 
   // 窗口大小变化时重新调整图表
   useEffect(() => {
@@ -341,7 +381,7 @@ export default function Profile() {
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {/* 头像卡 */}
         <Grid item xs={12} sm={4}>
-          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <Avatar
                 sx={{
@@ -376,7 +416,7 @@ export default function Profile() {
 
         {/* 个人数据卡 */}
         <Grid item xs={12} sm={4}>
-          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -413,7 +453,7 @@ export default function Profile() {
                     </Grid>
                   </Grid>
                   {bmr && (
-                    <Box sx={{ p: 1.5, bgcolor: 'rgba(0,191,165,0.08)', borderRadius: 2 }}>
+                    <Box sx={{ p: 1.5, bgcolor: 'rgba(0,191,165,0.08)', borderRadius: '12px' }}>
                       <Typography variant="caption" sx={{ color: '#64748B' }}>基础代谢 (BMR)</Typography>
                       <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
                         {bmr} <small>kcal/天</small>
@@ -437,7 +477,7 @@ export default function Profile() {
 
         {/* 设备连接状态卡 */}
         <Grid item xs={12} sm={4}>
-          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -482,7 +522,7 @@ export default function Profile() {
       </Grid>
 
       {/* 第二行：日/月图表 */}
-      <Card sx={{ mb: 3, borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+      <Card sx={{ mb: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -496,34 +536,59 @@ export default function Profile() {
               exclusive
               onChange={(e, val) => val && setChartType(val)}
               size="small"
-              sx={{ bgcolor: '#F1F5F9', p: 0.5, borderRadius: 2 }}
+              sx={{ bgcolor: '#F1F5F9', p: 0.5, borderRadius: '12px' }}
             >
-              <ToggleButton value="day" sx={{ borderRadius: 1.5, textTransform: 'none', px: 2 }}>
+              <ToggleButton value="day" sx={{ borderRadius: '10px', textTransform: 'none', px: 2 }}>
                 <CalendarIcon sx={{ fontSize: 16, mr: 0.5 }} />
                 日
               </ToggleButton>
-              <ToggleButton value="month" sx={{ borderRadius: 1.5, textTransform: 'none', px: 2 }}>
+              <ToggleButton value="month" sx={{ borderRadius: '10px', textTransform: 'none', px: 2 }}>
                 月
               </ToggleButton>
             </ToggleButtonGroup>
           </Box>
 
           {chartLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                py: 8,
+                bgcolor: '#F8FAFC',
+                borderRadius: '12px',
+              }}
+            >
               <CircularProgress size={40} sx={{ color: '#00BFA5' }} />
+              <Typography variant="body2" sx={{ color: '#64748B' }}>
+                正在加载饮食趋势…
+              </Typography>
             </Box>
-          ) : chartData.length > 0 ? (
-            <Box ref={chartRef} sx={{ height: 280, width: '100%' }} />
+          ) : chartError ? (
+            <Alert
+              severity="error"
+              sx={{ borderRadius: '12px' }}
+              action={
+                <Button color="inherit" size="small" onClick={() => loadChartData()}>
+                  重试
+                </Button>
+              }
+            >
+              {chartError}
+            </Alert>
+          ) : !trendHasPlottableData ? (
+            <Alert severity="info" icon={<ChartIcon fontSize="inherit" />} sx={{ borderRadius: '12px' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                当前时段暂无饮食趋势数据
+              </Typography>
+              <Typography variant="body2" component="span" sx={{ color: 'text.secondary', display: 'block' }}>
+                页面未卡住：只是所选「日 / 月」范围内没有有效卡路里或摄入量记录。开始用餐并同步数据后，图表将自动显示。
+              </Typography>
+            </Alert>
           ) : (
-            <Box sx={{ textAlign: 'center', py: 8, bgcolor: '#F8FAFC', borderRadius: 2 }}>
-              <ChartIcon sx={{ fontSize: 48, color: '#94A3B8', mb: 2 }} />
-              <Typography variant="body1" sx={{ color: '#475569', fontWeight: 500, mb: 1 }}>
-                暂无饮食数据
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#94A3B8' }}>
-                开始记录用餐后，这里将显示您的饮食趋势图表
-              </Typography>
-            </Box>
+            <Box ref={chartRef} sx={{ height: 280, width: '100%' }} />
           )}
         </CardContent>
       </Card>
@@ -531,7 +596,7 @@ export default function Profile() {
       {/* 第三行：AI报告和建议 */}
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <BulbIcon sx={{ color: '#F59E0B' }} />
@@ -567,7 +632,7 @@ export default function Profile() {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', borderRadius: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
+          <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <BulbIcon sx={{ color: '#8B5CF6' }} />
