@@ -22,6 +22,9 @@ import { analyzeVision } from '../api/vision';
 import { searchFoodLibrary } from '../api/foodLibrary';
 import { compressDataUrlForVision } from '../utils/imageCompress';
 
+/** 目标餐次下拉中「当前餐次」选项的值（非真实 meal_id，提交前需解析） */
+const TARGET_MEAL_CURRENT = '__current_meal__';
+
 export default function Meals() {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
@@ -108,6 +111,18 @@ export default function Meals() {
     mealId: m.meal_id,
     label: `${formatDate(m.start_time)} (${m.meal_id})`,
   })), [items]);
+
+  /**
+   * 将「目标餐次」下拉值解析为实际用于 API 的 meal_id。
+   * 选「当前餐次」时使用列表首条（与后端列表一致：按开餐时间倒序，即最新一餐）。
+   * @returns {string}
+   */
+  const resolveTargetMealId = () => {
+    if (selectedMealId === TARGET_MEAL_CURRENT) {
+      return items[0]?.meal_id ?? '';
+    }
+    return selectedMealId;
+  };
 
   /**
    * 打开摄像头流并渲染到视频组件。
@@ -236,8 +251,9 @@ export default function Meals() {
   const submitVisionConfirm = async () => {
     setSubmitResult('');
     setError(null);
-    if (!selectedMealId) {
-      setError('请先选择要挂载食物信息的餐次');
+    const mealId = resolveTargetMealId();
+    if (!mealId) {
+      setError('请先选择要挂载食物信息的餐次（当前餐次需至少有一条就餐记录）');
       return;
     }
     const visionGrids = gridInputs
@@ -252,7 +268,7 @@ export default function Meals() {
     }
     setSubmitLoading(true);
     try {
-      const res = await confirmMealVision(selectedMealId, visionGrids);
+      const res = await confirmMealVision(mealId, visionGrids);
       setSubmitResult(res.message || '视觉识别确认成功，卡路里已就绪');
       await load();
     } catch (e) {
@@ -277,8 +293,9 @@ export default function Meals() {
         unit_cal_per_100g: Number(grid.unit_cal_per_100g),
       }));
 
-    if (!selectedMealId) {
-      setError('请先选择要挂载食物信息的餐次');
+    const mealId = resolveTargetMealId();
+    if (!mealId) {
+      setError('请先选择要挂载食物信息的餐次（当前餐次需至少有一条就餐记录）');
       return;
     }
     if (selected.length === 0) {
@@ -292,7 +309,7 @@ export default function Meals() {
 
     setSubmitLoading(true);
     try {
-      const res = await updateMealFoods(selectedMealId, selected);
+      const res = await updateMealFoods(mealId, selected);
       setSubmitResult(res.message || '食物信息挂载成功，卡路里已就绪');
       await load();
     } catch (e) {
@@ -320,8 +337,11 @@ export default function Meals() {
               label="目标餐次"
               value={selectedMealId}
               onChange={(e) => setSelectedMealId(e.target.value)}
-              helperText="选择要挂载 /meals/{meal_id}/foods 的餐次"
+              helperText="「当前餐次」= 列表中开餐时间最新的一餐（与下方记录顺序一致）；其余为指定 meal_id"
             >
+              <MenuItem value={TARGET_MEAL_CURRENT} disabled={items.length === 0}>
+                当前餐次{items[0] ? `（${formatDate(items[0].start_time)}）` : '（暂无记录）'}
+              </MenuItem>
               {mealOptions.map((option) => (
                 <MenuItem key={option.mealId} value={option.mealId}>{option.label}</MenuItem>
               ))}

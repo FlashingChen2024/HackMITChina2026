@@ -2,14 +2,13 @@ import { useState, useEffect } from 'react';
 import {
   Card, CardContent, TextField, Button, Alert, Box, Typography,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  Grid, Avatar, Chip, IconButton, Tooltip, CircularProgress
+  Grid, Avatar, IconButton, Tooltip, CircularProgress
 } from '@mui/material';
 import { 
   DeleteOutline as DeleteIcon, 
   AddCircleOutline as AddIcon,
   DevicesOther as DeviceIcon,
   Sensors as SensorIcon,
-  CheckCircle as CheckIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { listBindings, bind, unbind } from '../api/devices';
@@ -158,18 +157,10 @@ export default function Devices() {
                 '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 12px 24px rgba(99, 102, 241, 0.12)' }
               }}>
                 <CardContent sx={{ p: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 3 }}>
                     <Avatar sx={{ width: 56, height: 56, bgcolor: 'rgba(99, 102, 241, 0.1)', color: '#6366F1' }}>
                       <SensorIcon fontSize="medium" />
                     </Avatar>
-                    <Chip 
-                      icon={<CheckIcon fontSize="small" />} 
-                      label="在线" 
-                      size="small"
-                      color="success"
-                      variant="outlined"
-                      sx={{ fontWeight: 600 }}
-                    />
                   </Box>
                   <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, letterSpacing: 1 }}>
                     DEVICE ID
