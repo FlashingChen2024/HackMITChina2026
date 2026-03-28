@@ -16,7 +16,8 @@ import {
   Logout as LogoutIcon,
   AccountCircle as AccountIcon,
   Menu as MenuIcon,
-  Timeline as TimelineIcon
+  Timeline as TimelineIcon,
+  NotificationsActive as AlertIcon
 } from '@mui/icons-material';
 import { getToken, setToken, getCurrentUser } from '../api/client';
 
@@ -41,6 +42,7 @@ export default function Layout() {
     { to: '/meals', label: '就餐记录', icon: <MealIcon /> },
     { to: '/trajectory', label: '实时轨迹', icon: <TimelineIcon /> },
     { to: '/devices', label: '设备管理', icon: <DeviceIcon /> },
+    { to: '/alerts', label: '预警功能', icon: <AlertIcon /> },
     { to: '/communities', label: '圈子社区', icon: <CommunityIcon /> },
     { to: '/profile', label: '个人信息', icon: <ProfileIcon /> }
   ];
