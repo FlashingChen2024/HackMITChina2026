@@ -63,6 +63,9 @@ func TestRegisterSuccess(t *testing.T) {
 	if payload["user_id"] != "user-1" {
 		t.Fatalf("expected user_id user-1, got %v", payload["user_id"])
 	}
+	if payload["message"] != "register success" {
+		t.Fatalf("expected message=register success, got %v", payload["message"])
+	}
 }
 
 func TestRegisterDuplicateUser(t *testing.T) {

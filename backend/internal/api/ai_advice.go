@@ -63,6 +63,5 @@ func (h *AIAdviceHandler) Get(c *gin.Context) {
 		"type":     result.Type,
 		"advice":   result.Advice,
 		"is_alert": result.IsAlert,
-		"prompt":   result.Prompt,
 	})
 }
