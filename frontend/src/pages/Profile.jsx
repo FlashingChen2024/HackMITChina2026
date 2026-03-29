@@ -41,18 +41,18 @@ import { listBindings } from '../api/devices';
 import { getCurrentUser } from '../api/client';
 
 const GENDER_OPTIONS = [
-  { value: 'male', label: '男', icon: '♂' },
-  { value: 'female', label: '女', icon: '♀' },
-  { value: 'other', label: '其他', icon: '○' },
+  { value: 'male', label: 'Male', icon: '♂' },
+  { value: 'female', label: 'Female', icon: '♀' },
+  { value: 'other', label: 'Other', icon: '○' },
 ];
 
 const GENDER_LABEL = {
-  male: '男',
-  female: '女',
-  other: '其他',
+  male: 'Male',
+  female: 'Female',
+  other: 'Other',
 };
 
-// 计算BMR（基础代谢率）
+// Calculate BMR (Basal Metabolic Rate)
 function calcBMR({ gender, age, height_cm, weight_kg }) {
   if (!age || !height_cm || !weight_kg) return null;
   const base = 10 * weight_kg + 6.25 * height_cm - 5 * age;
@@ -61,21 +61,21 @@ function calcBMR({ gender, age, height_cm, weight_kg }) {
   return Math.round(base - 78);
 }
 
-// 计算BMI
+// Calculate BMI
 function calcBMI(height_cm, weight_kg) {
   if (!height_cm || !weight_kg) return null;
   const height_m = height_cm / 100;
   return (weight_kg / (height_m * height_m)).toFixed(1);
 }
 
-// 获取日期范围
+// Get date range
 function getDateRange(type) {
   const end = new Date();
   const start = new Date();
   if (type === 'day') {
-    start.setDate(end.getDate() - 7); // 最近7天
+    start.setDate(end.getDate() - 7); // Last 7 days
   } else {
-    start.setMonth(end.getMonth() - 6); // 最近6个月
+    start.setMonth(end.getMonth() - 6); // Last 6 months
   }
   return {
     start: start.toISOString().split('T')[0],
@@ -84,7 +84,7 @@ function getDateRange(type) {
 }
 
 /**
- * 饮食趋势是否有可绘制数据（仅有日期、数值全 0 时仍视为无数据，避免空白图表被误认为卡顿）。
+ * Whether there is chartable diet trend data.
  *
  * @param {Array<{ calories?: number, intake?: number, served?: number }>} rows
  * @returns {boolean}
@@ -107,7 +107,7 @@ export default function Profile() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // 用户数据
+  // User data
   const [profile, setProfile] = useState(null);
   const [devices, setDevices] = useState([]);
   const [editOpen, setEditOpen] = useState(false);
@@ -119,7 +119,7 @@ export default function Profile() {
   });
   const [saving, setSaving] = useState(false);
 
-  // 图表数据
+  // Chart data
   const [chartType, setChartType] = useState('day'); // 'day' | 'month'
   const [chartData, setChartData] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
@@ -132,11 +132,11 @@ export default function Profile() {
     [chartData],
   );
 
-  // AI建议
+  // AI advice
   const [aiAdvice, setAiAdvice] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
 
-  // 加载所有数据
+  // Load all data
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     setError('');
@@ -159,14 +159,14 @@ export default function Profile() {
 
       setDevices(devicesRes.devices || []);
     } catch (err) {
-      setError(err.message || '加载数据失败');
+      setError(err.message || 'Failed to load data.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  // 加载图表数据
+  // Load chart data
   const loadChartData = useCallback(async () => {
     setChartLoading(true);
     setChartError('');
@@ -174,7 +174,7 @@ export default function Profile() {
       const { start, end } = getDateRange(chartType);
       const res = await fetchChartData({ start_date: start, end_date: end });
       
-      // 转换为图表格式
+      // Transform to chart format
       const data = res.chart_data?.dates?.map((date, i) => ({
         date,
         calories: res.chart_data.daily_calories?.[i] || 0,
@@ -185,15 +185,15 @@ export default function Profile() {
       
       setChartData(data);
     } catch (err) {
-      console.error('加载图表失败:', err);
+      console.error('Failed to load chart:', err);
       setChartData([]);
-      setChartError(err?.message || '加载饮食趋势失败，请稍后重试');
+      setChartError(err?.message || 'Failed to load diet trend. Please try again later.');
     } finally {
       setChartLoading(false);
     }
   }, [chartType]);
 
-  // 加载AI建议
+  // Load AI advice
   const loadAiAdvice = useCallback(async () => {
     setAiLoading(true);
     try {
@@ -206,7 +206,7 @@ export default function Profile() {
         next: nextMeal,
       });
     } catch (err) {
-      console.error('加载AI建议失败:', err);
+      console.error('Failed to load AI advice:', err);
     } finally {
       setAiLoading(false);
     }
@@ -233,7 +233,7 @@ export default function Profile() {
   }, []);
 
   /**
-   * 在 ref 已挂载且有可绘制数据时再 init/setOption，避免首屏 loading 结束时 ref 未就绪导致永久空白。
+   * Initialize the chart only after ref is mounted and data is available.
    */
   useEffect(() => {
     if (chartLoading || !trendHasPlottableData) {
@@ -261,7 +261,7 @@ export default function Profile() {
         borderRadius: 8,
         textStyle: { color: '#1E293B' },
       },
-      legend: { data: ['卡路里 (kcal)', '摄入量 (g)'], top: 0 },
+      legend: { data: ['Calories (kcal)', 'Intake (g)'], top: 0 },
       xAxis: {
         type: 'category',
         data: chartData.map((d) => d.date),
@@ -276,7 +276,7 @@ export default function Profile() {
       },
       series: [
         {
-          name: '卡路里 (kcal)',
+          name: 'Calories (kcal)',
           type: 'line',
           data: chartData.map((d) => d.calories),
           smooth: true,
@@ -286,7 +286,7 @@ export default function Profile() {
           itemStyle: { color: '#00BFA5' },
         },
         {
-          name: '摄入量 (g)',
+          name: 'Intake (g)',
           type: 'line',
           data: chartData.map((d) => d.intake),
           smooth: true,
@@ -301,7 +301,7 @@ export default function Profile() {
     requestAnimationFrame(() => chartInstanceRef.current?.resize());
   }, [chartData, chartLoading, trendHasPlottableData]);
 
-  // 窗口大小变化时重新调整图表
+  // Resize chart on window size changes
   useEffect(() => {
     const handleResize = () => {
       if (chartInstanceRef.current) {
@@ -312,7 +312,7 @@ export default function Profile() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 保存个人数据
+  // Save personal data
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
@@ -330,24 +330,24 @@ export default function Profile() {
       });
       setEditOpen(false);
     } catch (err) {
-      setError(err.message || '保存失败');
+      setError(err.message || 'Save failed.');
     } finally {
       setSaving(false);
     }
   };
 
-  // 计算统计数据
+  // Calculate stats
   const bmr = useMemo(() => calcBMR(profile || {}), [profile]);
   const bmi = useMemo(() => calcBMI(profile?.height_cm, profile?.weight_kg), [profile]);
 
-  // BMI评级
+  // BMI level
   const getBmiLevel = (bmi) => {
     if (!bmi) return null;
     const val = parseFloat(bmi);
-    if (val < 18.5) return { label: '偏瘦', color: '#F59E0B' };
-    if (val < 24) return { label: '正常', color: '#10B981' };
-    if (val < 28) return { label: '偏胖', color: '#F97316' };
-    return { label: '肥胖', color: '#EF4444' };
+    if (val < 18.5) return { label: 'Underweight', color: '#F59E0B' };
+    if (val < 24) return { label: 'Normal', color: '#10B981' };
+    if (val < 28) return { label: 'Overweight', color: '#F97316' };
+    return { label: 'Obese', color: '#EF4444' };
   };
   const bmiLevel = getBmiLevel(bmi);
 
@@ -361,10 +361,10 @@ export default function Profile() {
 
   return (
     <Box sx={{ pb: 4 }}>
-      {/* 顶部标题 */}
+      {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B' }}>
-          个人数据
+          Personal Data
         </Typography>
         <IconButton onClick={() => loadData(true)} disabled={refreshing}>
           <RefreshIcon sx={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
@@ -377,9 +377,9 @@ export default function Profile() {
         </Alert>
       )}
 
-      {/* 第一行：三个信息卡 */}
+      {/* Row 1: three info cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* 头像卡 */}
+        {/* Avatar card */}
         <Grid item xs={12} sm={4}>
           <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -397,14 +397,14 @@ export default function Profile() {
                 {currentUser?.username?.[0]?.toUpperCase() || 'U'}
               </Avatar>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                {currentUser?.username || '用户'}
+                {currentUser?.username || 'User'}
               </Typography>
               <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
                 ID: {currentUser?.userId?.slice(0, 8) || '---'}
               </Typography>
               <Chip
                 size="small"
-                label={GENDER_LABEL[profile?.gender] || '未设置性别'}
+                label={GENDER_LABEL[profile?.gender] || 'Gender not set'}
                 sx={{
                   bgcolor: profile?.gender === 'female' ? '#FDF2F8' : profile?.gender === 'male' ? '#EFF6FF' : '#F3F4F6',
                   color: profile?.gender === 'female' ? '#EC4899' : profile?.gender === 'male' ? '#3B82F6' : '#6B7280',
@@ -414,13 +414,13 @@ export default function Profile() {
           </Card>
         </Grid>
 
-        {/* 个人数据卡 */}
+        {/* Personal data card */}
         <Grid item xs={12} sm={4}>
           <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  健康数据
+                  Health Data
                 </Typography>
                 <IconButton size="small" onClick={() => setEditOpen(true)}>
                   <EditIcon fontSize="small" />
@@ -431,15 +431,15 @@ export default function Profile() {
                 <>
                   <Grid container spacing={2} sx={{ mb: 2 }}>
                     <Grid item xs={6}>
-                      <Typography variant="caption" sx={{ color: '#64748B' }}>年龄</Typography>
-                      <Typography variant="h6" sx={{ fontWeight: 700 }}>{profile.age} <small>岁</small></Typography>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>Age</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>{profile.age} <small>yrs</small></Typography>
                     </Grid>
                     <Grid item xs={6}>
-                      <Typography variant="caption" sx={{ color: '#64748B' }}>身高</Typography>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>Height</Typography>
                       <Typography variant="h6" sx={{ fontWeight: 700 }}>{profile.height_cm} <small>cm</small></Typography>
                     </Grid>
                     <Grid item xs={6}>
-                      <Typography variant="caption" sx={{ color: '#64748B' }}>体重</Typography>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>Weight</Typography>
                       <Typography variant="h6" sx={{ fontWeight: 700 }}>{profile.weight_kg} <small>kg</small></Typography>
                     </Grid>
                     <Grid item xs={6}>
@@ -454,9 +454,9 @@ export default function Profile() {
                   </Grid>
                   {bmr && (
                     <Box sx={{ p: 1.5, bgcolor: 'rgba(0,191,165,0.08)', borderRadius: '12px' }}>
-                      <Typography variant="caption" sx={{ color: '#64748B' }}>基础代谢 (BMR)</Typography>
+                      <Typography variant="caption" sx={{ color: '#64748B' }}>Basal Metabolic Rate (BMR)</Typography>
                       <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                        {bmr} <small>kcal/天</small>
+                        {bmr} <small>kcal/day</small>
                       </Typography>
                     </Box>
                   )}
@@ -464,10 +464,10 @@ export default function Profile() {
               ) : (
                 <Box sx={{ textAlign: 'center', py: 4 }}>
                   <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
-                    尚未填写健康数据
+                    Health data is not filled yet
                   </Typography>
                   <Button variant="outlined" size="small" onClick={() => setEditOpen(true)}>
-                    立即填写
+                    Fill Now
                   </Button>
                 </Box>
               )}
@@ -475,13 +475,13 @@ export default function Profile() {
           </Card>
         </Grid>
 
-        {/* 设备连接状态卡 */}
+        {/* Device status card */}
         <Grid item xs={12} sm={4}>
           <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <CardContent sx={{ p: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  设备状态
+                  Device Status
                 </Typography>
                 <DeviceIcon sx={{ color: '#64748B' }} />
               </Box>
@@ -491,7 +491,7 @@ export default function Profile() {
                   {devices.length}
                 </Typography>
                 <Typography variant="body2" sx={{ color: '#64748B' }}>
-                  已绑定设备
+                  Connected Devices
                 </Typography>
               </Box>
 
@@ -507,12 +507,12 @@ export default function Profile() {
                 {devices.length === 0 && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#94A3B8' }}>
                     <OfflineIcon sx={{ fontSize: 16 }} />
-                    <Typography variant="body2">暂无绑定设备</Typography>
+                    <Typography variant="body2">No connected devices</Typography>
                   </Box>
                 )}
                 {devices.length > 3 && (
                   <Typography variant="caption" sx={{ color: '#64748B', pl: 3 }}>
-                    还有 {devices.length - 3} 个设备...
+                    {devices.length - 3} more devices...
                   </Typography>
                 )}
               </Box>
@@ -521,14 +521,14 @@ export default function Profile() {
         </Grid>
       </Grid>
 
-      {/* 第二行：日/月图表 */}
+      {/* Row 2: day/month chart */}
       <Card sx={{ mb: 3, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <TrendIcon sx={{ color: 'primary.main' }} />
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                饮食趋势
+                Diet Trend
               </Typography>
             </Box>
             <ToggleButtonGroup
@@ -540,10 +540,10 @@ export default function Profile() {
             >
               <ToggleButton value="day" sx={{ borderRadius: '10px', textTransform: 'none', px: 2 }}>
                 <CalendarIcon sx={{ fontSize: 16, mr: 0.5 }} />
-                日
+                Day
               </ToggleButton>
               <ToggleButton value="month" sx={{ borderRadius: '10px', textTransform: 'none', px: 2 }}>
-                月
+                Month
               </ToggleButton>
             </ToggleButtonGroup>
           </Box>
@@ -563,7 +563,7 @@ export default function Profile() {
             >
               <CircularProgress size={40} sx={{ color: '#00BFA5' }} />
               <Typography variant="body2" sx={{ color: '#64748B' }}>
-                正在加载饮食趋势…
+                Loading diet trend...
               </Typography>
             </Box>
           ) : chartError ? (
@@ -572,7 +572,7 @@ export default function Profile() {
               sx={{ borderRadius: '12px' }}
               action={
                 <Button color="inherit" size="small" onClick={() => loadChartData()}>
-                  重试
+                  Retry
                 </Button>
               }
             >
@@ -581,10 +581,10 @@ export default function Profile() {
           ) : !trendHasPlottableData ? (
             <Alert severity="info" icon={<ChartIcon fontSize="inherit" />} sx={{ borderRadius: '12px' }}>
               <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                当前时段暂无饮食趋势数据
+                No diet trend data in the current period
               </Typography>
               <Typography variant="body2" component="span" sx={{ color: 'text.secondary', display: 'block' }}>
-                页面未卡住：只是所选「日 / 月」范围内没有有效卡路里或摄入量记录。开始用餐并同步数据后，图表将自动显示。
+                The page is not stuck. There are simply no valid calorie or intake records in the selected Day/Month range.
               </Typography>
             </Alert>
           ) : (
@@ -593,7 +593,7 @@ export default function Profile() {
         </CardContent>
       </Card>
 
-      {/* 第三行：AI报告和建议 */}
+      {/* Row 3: AI reports and suggestions */}
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%', boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
@@ -601,7 +601,7 @@ export default function Profile() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <BulbIcon sx={{ color: '#F59E0B' }} />
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  每日健康提醒
+                  Daily Health Reminder
                 </Typography>
               </Box>
               <Divider sx={{ mb: 2 }} />
@@ -617,14 +617,14 @@ export default function Profile() {
                   {aiAdvice.daily.is_alert && (
                     <Chip
                       size="small"
-                      label="健康预警"
+                      label="Health Alert"
                       sx={{ mt: 2, bgcolor: '#FEE2E2', color: '#DC2626' }}
                     />
                   )}
                 </Box>
               ) : (
                 <Typography variant="body2" sx={{ color: '#64748B' }}>
-                  暂无今日提醒，请保持规律用餐
+                  No reminder for today. Keep a regular meal schedule.
                 </Typography>
               )}
             </CardContent>
@@ -637,7 +637,7 @@ export default function Profile() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <BulbIcon sx={{ color: '#8B5CF6' }} />
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  下一餐建议
+                  Next Meal Suggestion
                 </Typography>
               </Box>
               <Divider sx={{ mb: 2 }} />
@@ -651,7 +651,7 @@ export default function Profile() {
                 </Typography>
               ) : (
                 <Typography variant="body2" sx={{ color: '#64748B' }}>
-                  正在分析您的饮食习惯，建议即将生成...
+                  Analyzing your eating habits. Suggestions will appear soon...
                 </Typography>
               )}
             </CardContent>
@@ -659,14 +659,14 @@ export default function Profile() {
         </Grid>
       </Grid>
 
-      {/* 编辑个人数据弹窗 */}
+      {/* Edit personal data dialog */}
       <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>编辑健康数据</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>Edit Health Data</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               select
-              label="性别"
+              label="Gender"
               value={editForm.gender}
               onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
               fullWidth
@@ -678,7 +678,7 @@ export default function Profile() {
               ))}
             </TextField>
             <TextField
-              label="年龄"
+              label="Age"
               type="number"
               value={editForm.age}
               onChange={(e) => setEditForm({ ...editForm, age: e.target.value })}
@@ -686,7 +686,7 @@ export default function Profile() {
               inputProps={{ min: 1, max: 120 }}
             />
             <TextField
-              label="身高 (cm)"
+              label="Height (cm)"
               type="number"
               value={editForm.height_cm}
               onChange={(e) => setEditForm({ ...editForm, height_cm: e.target.value })}
@@ -694,7 +694,7 @@ export default function Profile() {
               inputProps={{ min: 50, max: 260, step: 0.1 }}
             />
             <TextField
-              label="体重 (kg)"
+              label="Weight (kg)"
               type="number"
               value={editForm.weight_kg}
               onChange={(e) => setEditForm({ ...editForm, weight_kg: e.target.value })}
@@ -704,14 +704,14 @@ export default function Profile() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setEditOpen(false)}>取消</Button>
+          <Button onClick={() => setEditOpen(false)}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleSaveProfile}
             disabled={saving}
             startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
           >
-            保存
+            Save
           </Button>
         </DialogActions>
       </Dialog>

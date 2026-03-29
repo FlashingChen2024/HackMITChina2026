@@ -36,46 +36,46 @@ import {
 
 /**
  * @typedef {object} ThresholdRule
- * @property {string} intervalN 每 N 个单位时间
+ * @property {string} intervalN Every N units of time
  * @property {TimeUnit} timeUnit
  * @property {BoundType} boundType
- * @property {string} boundValue 最大值或最小值时的单一阈值
- * @property {string} boundMin 区间下限
- * @property {string} boundMax 区间上限
+ * @property {string} boundValue Single threshold for max/min
+ * @property {string} boundMin Lower bound of a range
+ * @property {string} boundMax Upper bound of a range
  */
 
 const CRITERIA_KEYS = [
-  { key: 'duration', label: '用餐时长' },
-  { key: 'speed', label: '用餐速度' },
-  { key: 'remaining', label: '用餐剩余量' },
-  { key: 'intake', label: '用餐摄入量' },
+  { key: 'duration', label: 'Meal Duration' },
+  { key: 'speed', label: 'Eating Speed' },
+  { key: 'remaining', label: 'Leftover Amount' },
+  { key: 'intake', label: 'Intake Amount' },
 ];
 
 /** @type {Record<string, string>} */
 const CRITERIA_LABEL_MAP = {
-  duration: '用餐时长',
-  speed: '用餐速度',
-  remaining: '用餐剩余量',
-  intake: '用餐摄入量',
-  mealTime: '每餐进餐时间',
+  duration: 'Meal Duration',
+  speed: 'Eating Speed',
+  remaining: 'Leftover Amount',
+  intake: 'Intake Amount',
+  mealTime: 'Meal Time Window',
 };
 
 const ALL_ROW_KEYS = ['duration', 'speed', 'remaining', 'intake', 'mealTime'];
 
 /** @type {{ value: TimeUnit, label: string }[]} */
 const TIME_UNIT_OPTIONS = [
-  { value: 'minute', label: '分钟' },
-  { value: 'hour', label: '小时' },
-  { value: 'day', label: '天' },
-  { value: 'week', label: '周' },
-  { value: 'month', label: '月' },
+  { value: 'minute', label: 'Minute' },
+  { value: 'hour', label: 'Hour' },
+  { value: 'day', label: 'Day' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
 ];
 
 /** @type {{ value: BoundType, label: string }[]} */
 const BOUND_TYPE_OPTIONS = [
-  { value: 'max', label: '最大值' },
-  { value: 'min', label: '最小值' },
-  { value: 'range', label: '区间' },
+  { value: 'max', label: 'Maximum' },
+  { value: 'min', label: 'Minimum' },
+  { value: 'range', label: 'Range' },
 ];
 
 /**
@@ -105,13 +105,13 @@ function createInitialThresholdRows() {
 }
 
 /**
- * 大众向默认高级规则（便于一键填充；数值为常见科普向参考，可再改）。
- * 约定：时长类为「分钟」、速度为「g/min」、食量为「g」；统计周期为「每 1 天」。
- * - 用餐时长：单餐不宜过久，上限 90 分钟
- * - 用餐速度：过快不利消化，单日参考上限 35 g/min
- * - 用餐剩余量：剩太多提示浪费，上限 150 g
- * - 用餐摄入量：吃太少不利健康，下限 350 g
- * - 每餐进餐时间：每餐至少约 15 分钟，利于细嚼慢咽
+ * Default advanced rules for one-click setup.
+ * Convention: duration in minutes, speed in g/min, amount in g; period is every 1 day.
+ * - Meal duration: upper bound 90 minutes
+ * - Eating speed: upper bound 35 g/min per day
+ * - Leftover amount: upper bound 150 g
+ * - Intake amount: lower bound 350 g
+ * - Meal time window: at least around 15 minutes per meal
  *
  * @type {Record<string, ThresholdRule>}
  */
@@ -172,30 +172,30 @@ function cloneDefaultThresholdRows() {
 
 /**
  * @param {ThresholdRule} rule
- * @returns {string | null} 错误文案；null 表示通过
+ * @returns {string | null} Error text; null means valid
  */
 function validateRule(rule) {
   const n = String(rule.intervalN).trim();
   if (n === '' || Number.isNaN(Number(n)) || Number(n) <= 0 || !Number.isFinite(Number(n))) {
-    return '请填写「每」后面的正数字';
+    return 'Please enter a positive number for "Every".';
   }
   if (rule.boundType === 'max' || rule.boundType === 'min') {
     const v = String(rule.boundValue).trim();
     if (v === '' || Number.isNaN(Number(v)) || !Number.isFinite(Number(v))) {
-      return '请填写阈值';
+      return 'Please enter a threshold value.';
     }
   }
   if (rule.boundType === 'range') {
     const a = String(rule.boundMin).trim();
     const b = String(rule.boundMax).trim();
     if (a === '' || Number.isNaN(Number(a)) || !Number.isFinite(Number(a))) {
-      return '请填写区间下限';
+      return 'Please enter the lower bound.';
     }
     if (b === '' || Number.isNaN(Number(b)) || !Number.isFinite(Number(b))) {
-      return '请填写区间上限';
+      return 'Please enter the upper bound.';
     }
     if (Number(a) > Number(b)) {
-      return '区间下限不能大于上限';
+      return 'Lower bound cannot be greater than upper bound.';
     }
   }
   return null;
@@ -207,17 +207,17 @@ function validateRule(rule) {
  */
 function formatRuleSummary(rule) {
   const err = validateRule(rule);
-  if (err) return '尚未完成有效设置';
+  if (err) return 'Invalid configuration';
   const unit = TIME_UNIT_OPTIONS.find((o) => o.value === rule.timeUnit)?.label ?? rule.timeUnit;
   const bt = BOUND_TYPE_OPTIONS.find((o) => o.value === rule.boundType)?.label ?? rule.boundType;
   if (rule.boundType === 'range') {
-    return `每 ${rule.intervalN} ${unit}，${bt} ${rule.boundMin} ～ ${rule.boundMax}`;
+    return `Every ${rule.intervalN} ${unit}, ${bt} ${rule.boundMin} to ${rule.boundMax}`;
   }
-  return `每 ${rule.intervalN} ${unit}，${bt} ${rule.boundValue}`;
+  return `Every ${rule.intervalN} ${unit}, ${bt} ${rule.boundValue}`;
 }
 
 /**
- * 高级设置内：每 N [单位] ，设置 最大/最小/区间 + 数值
+ * Advanced settings: every N [unit], set max/min/range + values
  * @param {{ rule: ThresholdRule, onChange: (patch: Partial<ThresholdRule>) => void }} props
  * @returns {JSX.Element}
  */
@@ -233,13 +233,13 @@ function ThresholdRuleEditor({ rule, onChange }) {
       }}
     >
       <Typography variant="body2" sx={{ color: '#64748B', fontWeight: 500 }}>
-        每
+        Every
       </Typography>
       <TextField
         size="small"
         type="number"
         inputProps={{ min: 1, step: 1 }}
-        placeholder="数字"
+        placeholder="Number"
         value={rule.intervalN}
         onChange={(e) => onChange({ intervalN: e.target.value })}
         variant="outlined"
@@ -260,7 +260,7 @@ function ThresholdRuleEditor({ rule, onChange }) {
         ))}
       </TextField>
       <Typography variant="body2" sx={{ color: '#64748B' }}>
-        ，设置
+        set
       </Typography>
       <TextField
         select
@@ -282,7 +282,7 @@ function ThresholdRuleEditor({ rule, onChange }) {
           <TextField
             size="small"
             type="number"
-            label="下限"
+            label="Lower"
             value={rule.boundMin}
             onChange={(e) => onChange({ boundMin: e.target.value })}
             variant="outlined"
@@ -294,7 +294,7 @@ function ThresholdRuleEditor({ rule, onChange }) {
           <TextField
             size="small"
             type="number"
-            label="上限"
+            label="Upper"
             value={rule.boundMax}
             onChange={(e) => onChange({ boundMax: e.target.value })}
             variant="outlined"
@@ -305,7 +305,7 @@ function ThresholdRuleEditor({ rule, onChange }) {
         <TextField
           size="small"
           type="number"
-          label={rule.boundType === 'max' ? '不超过' : '不低于'}
+          label={rule.boundType === 'max' ? 'No more than' : 'No less than'}
           value={rule.boundValue}
           onChange={(e) => onChange({ boundValue: e.target.value })}
           variant="outlined"
@@ -317,7 +317,7 @@ function ThresholdRuleEditor({ rule, onChange }) {
 }
 
 /**
- * 预警设置：指标勾选 + 高级设置弹窗 + 通知联系人
+ * Alert settings: metric toggles + advanced dialog + notification contacts
  */
 export default function AlertSettings() {
   const [checked, setChecked] = useState({
@@ -351,7 +351,7 @@ export default function AlertSettings() {
       const err = validateRule(thresholdRows[key]);
       if (err) {
         setCriteriaError(
-          `「${CRITERIA_LABEL_MAP[key] || key}」未在高级设置中填写完整规则：${err}。请先点击「高级设置」填写后再勾选。`,
+          `"${CRITERIA_LABEL_MAP[key] || key}" is incomplete in Advanced Settings: ${err}. Please complete it before enabling this metric.`,
         );
         return;
       }
@@ -388,7 +388,7 @@ export default function AlertSettings() {
   }, []);
 
   /**
-   * 一键写入全部指标的默认高级规则（仍须手动勾选开关）。
+   * One-click write default advanced rules for all metrics (toggle still required manually).
    * @returns {void}
    */
   const applyDefaultThresholds = useCallback(() => {
@@ -396,7 +396,7 @@ export default function AlertSettings() {
     setThresholdRows(next);
     setCriteriaError('');
     setDefaultAppliedTip(
-      '已为全部指标写入大众向默认值（每 1 天统计：时长/进餐时间上限或下限为分钟量级，速度 g/min，食量 g）。可按需点开「高级设置」微调后再勾选。',
+      'Default values have been written for all metrics (every 1 day: duration/time-window in minutes, speed in g/min, amount in g). Fine-tune in Advanced Settings before enabling.',
     );
     if (advancedDialogKey) {
       setAdvancedDraft({ ...next[advancedDialogKey] });
@@ -467,7 +467,7 @@ export default function AlertSettings() {
 
   const cardShadow = '0 2px 8px rgba(0, 0, 0, 0.04)';
   /**
-   * 预警指标 / 通知联系人主卡片圆角，与主题 `MuiCard`（20px）及顶栏一致，避免 `borderRadius: 3` 随 `shape` 倍乘过圆。
+   * Keep card radius aligned with theme `MuiCard` (20px) and top bar.
    */
   const alertCardRadius = '20px';
   const headerGradient = 'linear-gradient(135deg, #00BFA5 0%, #008573 100%)';
@@ -480,10 +480,10 @@ export default function AlertSettings() {
     <Box sx={{ pb: 4, maxWidth: 1000, mx: 'auto' }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>
-          预警功能
+          Alert Settings
         </Typography>
         <Typography variant="body1" sx={{ color: '#64748B' }}>
-          请先在「高级设置」中填写「每 N 单位时间 + 最大/最小/区间」规则，再勾选对应指标；并添加接收预警邮件的联系人
+          First configure each metric in Advanced Settings (every N time units + max/min/range), then enable it and add email recipients.
         </Typography>
       </Box>
 
@@ -514,7 +514,7 @@ export default function AlertSettings() {
                 <AlertHeaderIcon />
               </Avatar>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                预警指标
+                Alert Metrics
               </Typography>
             </Box>
             <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
@@ -540,7 +540,7 @@ export default function AlertSettings() {
                 }}
               >
                 <Chip
-                  label="可勾选（需先完成高级设置）"
+                  label="Toggle available after advanced setup"
                   size="small"
                   sx={{
                     fontWeight: 600,
@@ -562,7 +562,7 @@ export default function AlertSettings() {
                     color: 'primary.main',
                   }}
                 >
-                  默认设置
+                  Default Setup
                 </Button>
               </Box>
 
@@ -602,7 +602,7 @@ export default function AlertSettings() {
                         onClick={() => openAdvanced(key)}
                         sx={{ alignSelf: { xs: 'stretch', sm: 'flex-end' }, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
                       >
-                        高级设置
+                        Advanced Settings
                       </Button>
                       <Typography variant="caption" sx={{ color: '#94A3B8', textAlign: { xs: 'left', sm: 'right' }, maxWidth: 360, alignSelf: { sm: 'flex-end' } }}>
                         {formatRuleSummary(thresholdRows[key])}
@@ -642,7 +642,7 @@ export default function AlertSettings() {
                       )}
                       label={(
                         <Typography sx={{ fontWeight: 700, color: '#1E293B' }}>
-                          每餐进餐时间
+                          Meal Time Window
                         </Typography>
                       )}
                       sx={{ m: 0, alignItems: 'center', flex: { sm: '0 0 auto' } }}
@@ -655,7 +655,7 @@ export default function AlertSettings() {
                         onClick={() => openAdvanced('mealTime')}
                         sx={{ alignSelf: { xs: 'stretch', sm: 'flex-end' }, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
                       >
-                        高级设置
+                        Advanced Settings
                       </Button>
                       <Typography variant="caption" sx={{ color: '#94A3B8', textAlign: { xs: 'left', sm: 'right' }, maxWidth: 360, alignSelf: { sm: 'flex-end' } }}>
                         {formatRuleSummary(thresholdRows.mealTime)}
@@ -697,18 +697,18 @@ export default function AlertSettings() {
                 <ContactHeaderIcon />
               </Avatar>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                通知联系人
+                Notification Contacts
               </Typography>
             </Box>
             <CardContent sx={{ p: { xs: 2, sm: 3 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
               <Typography variant="subtitle2" sx={{ color: '#64748B', fontWeight: 600, mb: 1.5 }}>
-                已添加联系人 {contacts.length > 0 ? `(${contacts.length})` : ''}
+                Added Contacts {contacts.length > 0 ? `(${contacts.length})` : ''}
               </Typography>
 
               <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 3, minHeight: 44 }}>
                 {contacts.length === 0 ? (
                   <Typography variant="body2" sx={{ color: '#94A3B8', py: 1 }}>
-                    暂无通知邮箱，点击下方按钮添加
+                    No notification email yet. Click below to add one.
                   </Typography>
                 ) : (
                   contacts.map((c) => (
@@ -747,7 +747,7 @@ export default function AlertSettings() {
                     },
                   }}
                 >
-                  添加邮件联系人
+                  Add Email Contact
                 </Button>
               </Box>
             </CardContent>
@@ -763,11 +763,11 @@ export default function AlertSettings() {
         PaperProps={{ sx: { borderRadius: 4 } }}
       >
         <DialogTitle sx={{ fontWeight: 800, color: '#1E293B' }}>
-          {advancedTitle} — 高级设置
+          {advancedTitle} - Advanced Settings
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
-            按以下格式填写：每（数字）（单位时间），设置最大值或最小值或区间及对应数值。
+            Format: Every (number) (time unit), then set maximum, minimum, or range with values.
           </Typography>
           <ThresholdRuleEditor
             rule={advancedDraft}
@@ -784,7 +784,7 @@ export default function AlertSettings() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={closeAdvanced} sx={{ color: '#64748B' }}>
-            取消
+            Cancel
           </Button>
           <Button
             variant="contained"
@@ -796,7 +796,7 @@ export default function AlertSettings() {
               '&:hover': { background: btnGradientHover },
             }}
           >
-            保存
+            Save
           </Button>
         </DialogActions>
       </Dialog>
@@ -806,11 +806,11 @@ export default function AlertSettings() {
         onClose={closeAddContactDialog}
         PaperProps={{ sx: { borderRadius: 4, p: 0.5 } }}
       >
-        <DialogTitle sx={{ fontWeight: 800, color: '#1E293B' }}>添加邮件联系人</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: '#1E293B' }}>Add Email Contact</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1, minWidth: 300 }}>
             <TextField
-              label="姓名"
+              label="Name"
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}
               fullWidth
@@ -818,7 +818,7 @@ export default function AlertSettings() {
               variant="outlined"
             />
             <TextField
-              label="通知邮箱"
+              label="Notification Email"
               type="email"
               value={draftEmail}
               onChange={(e) => setDraftEmail(e.target.value)}
@@ -829,15 +829,15 @@ export default function AlertSettings() {
               error={draftEmail.trim() !== '' && !isLooseEmail(draftEmail)}
               helperText={
                 draftEmail.trim() !== '' && !isLooseEmail(draftEmail)
-                  ? '请输入有效邮箱地址'
-                  : '预警将发送至该邮箱'
+                  ? 'Please enter a valid email address.'
+                  : 'Alerts will be sent to this email.'
               }
             />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={closeAddContactDialog} sx={{ color: '#64748B' }}>
-            取消
+            Cancel
           </Button>
           <Button
             variant="contained"
@@ -850,7 +850,7 @@ export default function AlertSettings() {
               '&:hover': { background: btnGradientHover },
             }}
           >
-            确定
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

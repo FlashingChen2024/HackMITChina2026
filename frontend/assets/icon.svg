@@ -1,0 +1,24 @@
+﻿<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0EA5A4"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="box" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#DDE7EE"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="url(#bg)"/>
+  <circle cx="512" cy="512" r="328" fill="#ffffff" fill-opacity="0.12"/>
+
+  <rect x="252" y="366" width="520" height="330" rx="78" fill="url(#box)"/>
+  <rect x="252" y="332" width="520" height="80" rx="40" fill="#E2E8F0"/>
+  <rect x="286" y="430" width="452" height="226" rx="44" fill="#FFFFFF"/>
+
+  <line x1="438" y1="430" x2="438" y2="656" stroke="#C7D2DA" stroke-width="20"/>
+  <line x1="586" y1="430" x2="586" y2="656" stroke="#C7D2DA" stroke-width="20"/>
+
+  <path d="M484 304 C520 250, 592 248, 620 292 C584 326, 522 332, 484 304 Z" fill="#86EFAC"/>
+  <path d="M520 218 C540 246, 538 282, 516 308 C488 282, 484 246, 520 218 Z" fill="#22C55E"/>
+</svg>

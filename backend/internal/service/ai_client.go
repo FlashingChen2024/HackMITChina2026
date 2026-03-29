@@ -14,7 +14,7 @@ import (
 
 const (
 	defaultAITimeout      = 30 * time.Second
-	defaultAISystemPrompt = "你是 K-XYZ 云端营养师。请严格只输出 JSON 字符串，格式为{\"advice\":\"...\",\"is_alert\":true/false}。"
+	defaultAISystemPrompt = "You are the K-XYZ cloud nutrition advisor. Strictly output only a JSON string in this format: {\"advice\":\"...\",\"is_alert\":true/false}. The advice text must be in English only."
 )
 
 type AIModelClientConfig struct {

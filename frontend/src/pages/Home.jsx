@@ -2,19 +2,19 @@ import { useEffect, useState } from 'react';
 import { Box, Typography, Avatar, Card, CardContent, LinearProgress, Grid, Chip } from '@mui/material';
 import { AccessTime, Speed, Restaurant } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
-import { fetchMeals } from '../api/meals';
+import { fetchMealDetail, fetchMeals } from '../api/meals';
 import { listBindings } from '../api/devices';
 
-// 计算进食进度 (intake / served * 100)
+// Calculate meal progress (intake / served * 100)
 function calcProgress(served, intake) {
   if (!served || served <= 0) return 0;
   const progress = (intake / served) * 100;
   return Math.min(Math.max(progress, 0), 100);
 }
 
-// 格式化时间差
+// Format elapsed time
 function formatDuration(startTime) {
-  if (!startTime) return '0分钟';
+  if (!startTime) return '0 min';
   const start = new Date(startTime);
   const now = new Date();
   const diffMs = now - start;
@@ -22,17 +22,17 @@ function formatDuration(startTime) {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
   
-  if (diffDays > 0) return `${diffDays}天${diffHours % 24}小时`;
-  if (diffHours > 0) return `${diffHours}小时${diffMins % 60}分钟`;
-  return `${diffMins}分钟`;
+  if (diffDays > 0) return `${diffDays}d ${diffHours % 24}h`;
+  if (diffHours > 0) return `${diffHours}h ${diffMins % 60}min`;
+  return `${diffMins}min`;
 }
 
-// 餐盒格子颜色
+// Grid color palette
 const GRID_COLORS = [
-  { bg: '#FEE2E2', bar: '#EF4444', text: '#991B1B' },   // 红
-  { bg: '#DBEAFE', bar: '#3B82F6', text: '#1E40AF' },   // 蓝
-  { bg: '#D1FAE5', bar: '#10B981', text: '#065F46' },   // 绿
-  { bg: '#FEF3C7', bar: '#F59E0B', text: '#92400E' },   // 黄
+  { bg: '#FEE2E2', bar: '#EF4444', text: '#991B1B' },   // Red
+  { bg: '#DBEAFE', bar: '#3B82F6', text: '#1E40AF' },   // Blue
+  { bg: '#D1FAE5', bar: '#10B981', text: '#065F46' },   // Green
+  { bg: '#FEF3C7', bar: '#F59E0B', text: '#92400E' },   // Yellow
 ];
 
 export default function Home() {
@@ -47,7 +47,7 @@ export default function Home() {
 
   useEffect(() => {
     /**
-     * @param {{ silent?: boolean }} opts 定时刷新时不显示全页 loading，避免数字与进度条周期性闪动
+     * @param {{ silent?: boolean }} opts Hide full-page loading on polling refreshes to prevent flicker.
      */
     async function loadData(opts = {}) {
       const silent = !!opts.silent;
@@ -56,24 +56,36 @@ export default function Home() {
 
         const [devicesRes, mealsRes] = await Promise.all([
           listBindings(),
-          fetchMeals({ limit: 1 }),
+          fetchMeals(),
         ]);
 
         setDevices(devicesRes.devices || []);
 
         if (mealsRes.items && mealsRes.items.length > 0) {
-          const latest = mealsRes.items[0];
-          setLatestMeal(latest);
+          const latestSummary = mealsRes.items[0];
+          const latestDetail = await fetchMealDetail(latestSummary.meal_id);
+          setLatestMeal(latestDetail);
 
-          if (latest.start_time) {
-            setStats({
-              totalTime: formatDuration(latest.start_time),
-              avgSpeed: latest.avg_speed_g_per_min || 0,
-            });
-          }
+          const startTime = latestSummary.start_time || latestDetail.start_time;
+          const detailList = latestDetail.grid_details || [];
+          const speedList = detailList
+            .map((g) => Number(g?.speed_g_per_min || 0))
+            .filter((v) => v > 0);
+          const avgSpeed =
+            speedList.length > 0
+              ? speedList.reduce((sum, v) => sum + v, 0) / speedList.length
+              : 0;
+
+          setStats({
+            totalTime: startTime ? formatDuration(startTime) : '',
+            avgSpeed,
+          });
+        } else {
+          setLatestMeal(null);
+          setStats({ totalTime: '', avgSpeed: 0 });
         }
       } catch (err) {
-        console.error('加载首页数据失败:', err);
+        console.error('Failed to load home data:', err);
       } finally {
         if (!silent) setLoading(false);
       }
@@ -85,12 +97,12 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // 生成四个格子的数据
+  // Generate data for the four lunchbox grids.
   const gridData = [1, 2, 3, 4].map((index) => {
     const detail = latestMeal?.grid_details?.find(g => g.grid_index === index);
     const served = detail?.served_g || 0;
     const intake = detail?.intake_g || 0;
-    const foodName = detail?.food_name || `餐格 ${index}`;
+    const foodName = `Grid${index}`;
     const progress = calcProgress(served, intake);
     
     return {
@@ -105,7 +117,7 @@ export default function Home() {
 
   return (
     <Box sx={{ pb: 4 }}>
-      {/* 第一行：头像 + 用户名 */}
+      {/* Row 1: avatar + username */}
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
         <Avatar
           sx={{
@@ -121,15 +133,15 @@ export default function Home() {
         </Avatar>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 800, color: '#1E293B' }}>
-            {currentUser?.username || '用户'}
+            {currentUser?.username || 'User'}
           </Typography>
           <Typography variant="body2" sx={{ color: '#64748B' }}>
-            欢迎回来，祝您用餐愉快
+            Welcome back. Enjoy your meal.
           </Typography>
         </Box>
       </Box>
 
-      {/* 第二行：共处时间 + 进食速度 */}
+      {/* Row 2: elapsed time + eating speed */}
       <Card
         sx={{
           mb: 4,
@@ -157,10 +169,10 @@ export default function Home() {
                 </Box>
                 <Box>
                   <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
-                    您已经和餐盒共处
+                    Time with your lunchbox
                   </Typography>
                   <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                    {loading ? '---' : stats.totalTime || '暂无记录'}
+                    {loading ? '---' : stats.totalTime || 'No records yet'}
                   </Typography>
                 </Box>
               </Box>
@@ -182,7 +194,7 @@ export default function Home() {
                 </Box>
                 <Box>
                   <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
-                    您的进食速度
+                    Your eating speed
                   </Typography>
                   <Typography variant="h4" sx={{ fontWeight: 800 }}>
                     {loading ? '---' : `${stats.avgSpeed.toFixed(1)} g/min`}
@@ -194,16 +206,16 @@ export default function Home() {
         </CardContent>
       </Card>
 
-      {/* 四个餐盒进度卡 */}
+      {/* Four meal-progress cards */}
       <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
         <Restaurant sx={{ color: 'primary.main' }} />
         <Typography variant="h6" sx={{ fontWeight: 700, color: '#1E293B' }}>
-          餐盒用餐进度
+          Lunchbox Meal Progress
         </Typography>
         {devices.length > 0 && (
           <Chip
             size="small"
-            label={`已绑定 ${devices.length} 个设备`}
+            label={`${devices.length} devices connected`}
             sx={{ ml: 'auto', bgcolor: 'rgba(0, 191, 165, 0.1)', color: 'primary.main' }}
           />
         )}
@@ -241,7 +253,7 @@ export default function Home() {
                   </Typography>
                 </Box>
 
-                {/* 进度条 */}
+                {/* Progress bar */}
                 <Box sx={{ mb: 2 }}>
                   <LinearProgress
                     variant="determinate"
@@ -259,13 +271,13 @@ export default function Home() {
                   />
                 </Box>
 
-                {/* 数据详情 */}
+                {/* Data details */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="caption" sx={{ color: grid.color.text, opacity: 0.8 }}>
-                    已吃: {grid.intake}g
+                    Eaten: {grid.intake}g
                   </Typography>
                   <Typography variant="caption" sx={{ color: grid.color.text, opacity: 0.8 }}>
-                    总量: {grid.served}g
+                    Total: {grid.served}g
                   </Typography>
                 </Box>
               </CardContent>
@@ -274,7 +286,7 @@ export default function Home() {
         ))}
       </Grid>
 
-      {/* 无数据提示 */}
+      {/* Empty state */}
       {!loading && !latestMeal && (
         <Card
           sx={{
@@ -286,10 +298,10 @@ export default function Home() {
           }}
         >
           <Typography variant="body1" sx={{ color: '#64748B', mb: 1 }}>
-            暂无用餐记录
+            No meal records yet
           </Typography>
           <Typography variant="body2" sx={{ color: '#94A3B8' }}>
-            开始您的第一餐，数据将自动同步到这里
+            Start your first meal and data will sync here automatically.
           </Typography>
         </Card>
       )}

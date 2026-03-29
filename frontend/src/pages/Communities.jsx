@@ -53,7 +53,7 @@ export default function Communities() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // 我的社区列表
+  // My community list
   const [myCommunities, setMyCommunities] = useState([]);
   const [loadingMyCommunities, setLoadingMyCommunities] = useState(false);
 
@@ -66,20 +66,20 @@ export default function Communities() {
   const [dashboardId, setDashboardId] = useState('');
   const [dashboard, setDashboard] = useState(null);
 
-  // 加载我的社区列表
+  // Load my communities
   const loadMyCommunities = async () => {
     setLoadingMyCommunities(true);
     try {
       const res = await listCommunities();
       setMyCommunities(res.items || []);
     } catch (err) {
-      console.error('加载社区列表失败:', err);
+      console.error('Failed to load community list:', err);
     } finally {
       setLoadingMyCommunities(false);
     }
   };
 
-  // 初始加载
+  // Initial load
   useEffect(() => {
     loadMyCommunities();
   }, []);
@@ -89,18 +89,18 @@ export default function Communities() {
     setSuccess('');
   };
 
-  // 复制到剪贴板
+  // Copy to clipboard
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    setSuccess('已复制到剪贴板');
+    setSuccess('Copied to clipboard.');
     setTimeout(() => setSuccess(''), 2000);
   };
 
-  // 跳转到社区看板
+  // Go to community dashboard
   const goToDashboard = (communityId) => {
     setDashboardId(communityId);
     setActiveTab(3);
-    // 自动加载看板
+    // Auto-load dashboard
     setTimeout(() => {
       handleLoadDashboardById(communityId);
     }, 100);
@@ -129,21 +129,21 @@ export default function Communities() {
           await navigator.clipboard.writeText(newId);
           copied = true;
         } catch (clipErr) {
-          console.warn('自动复制社区 ID 失败:', clipErr);
+          console.warn('Auto-copy community ID failed:', clipErr);
         }
       }
 
       setSuccess(
         copied
-          ? `成功创建社区「${trimmedName}」，社区 ID 已自动复制到剪贴板`
+          ? `Community "${trimmedName}" created. Community ID copied to clipboard.`
           : newId
-            ? `成功创建社区「${trimmedName}」，请使用下方按钮复制社区 ID`
-            : `成功创建社区「${trimmedName}」`,
+            ? `Community "${trimmedName}" created. Use the button below to copy the ID.`
+            : `Community "${trimmedName}" created.`,
       );
 
       loadMyCommunities();
     } catch (err) {
-      setError(err.message || '创建社区失败');
+      setError(err.message || 'Failed to create community.');
     } finally {
       setLoading(false);
     }
@@ -158,14 +158,14 @@ export default function Communities() {
     try {
       const cid = joinId.trim().toUpperCase();
       await joinCommunity(cid);
-      setSuccess('成功加入社区');
+      setSuccess('Joined community successfully.');
       setDashboardId(cid);
       setJoinId('');
-      // 刷新社区列表
+      // Refresh community list
       loadMyCommunities();
       setTimeout(() => setActiveTab(3), 500);
     } catch (err) {
-      setError(err.message || '加入社区失败');
+      setError(err.message || 'Failed to join community.');
     } finally {
       setLoading(false);
     }
@@ -179,7 +179,7 @@ export default function Communities() {
       setDashboard(res || null);
     } catch (err) {
       setDashboard(null);
-      setError(err.message || '加载社区看板失败');
+      setError(err.message || 'Failed to load community dashboard.');
     } finally {
       setLoading(false);
     }
@@ -195,10 +195,10 @@ export default function Communities() {
     <Box sx={{ pb: 4, maxWidth: 1000, mx: 'auto' }}>
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>
-          圈子社区
+          Communities
         </Typography>
         <Typography variant="body1" sx={{ color: '#64748B' }}>
-          创建社区、加入社区并查看社区聚合看板
+          Create or join communities and view aggregated dashboards.
         </Typography>
       </Box>
 
@@ -216,15 +216,15 @@ export default function Communities() {
             variant="fullWidth"
             sx={{ '& .Mui-selected': { color: theme.palette.primary.main } }}
           >
-            <Tab icon={<PeopleIcon />} iconPosition="start" label="我的社区" />
-            <Tab icon={<AddIcon />} iconPosition="start" label="创建社区" />
-            <Tab icon={<JoinIcon />} iconPosition="start" label="加入社区" />
-            <Tab icon={<DashboardIcon />} iconPosition="start" label="社区看板" />
+            <Tab icon={<PeopleIcon />} iconPosition="start" label="My Communities" />
+            <Tab icon={<AddIcon />} iconPosition="start" label="Create" />
+            <Tab icon={<JoinIcon />} iconPosition="start" label="Join" />
+            <Tab icon={<DashboardIcon />} iconPosition="start" label="Dashboard" />
           </Tabs>
         </Box>
 
         <CardContent>
-          {/* 我的社区选项卡 */}
+          {/* My communities tab */}
           <TabPanel value={activeTab} index={0}>
             {loadingMyCommunities ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -249,7 +249,7 @@ export default function Communities() {
                           />
                         </Box>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          {community.description || '暂无描述'}
+                          {community.description || 'No description'}
                         </Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                           <Typography
@@ -267,7 +267,7 @@ export default function Communities() {
                           >
                             ID: {community.community_id}
                           </Typography>
-                          <Tooltip title="复制社区ID">
+                          <Tooltip title="Copy Community ID">
                             <IconButton
                               size="small"
                               onClick={() => copyToClipboard(community.community_id)}
@@ -283,7 +283,7 @@ export default function Communities() {
                           startIcon={<ViewIcon />}
                           onClick={() => goToDashboard(community.community_id)}
                         >
-                          查看看板
+                          View Dashboard
                         </Button>
                       </CardContent>
                     </Card>
@@ -294,24 +294,24 @@ export default function Communities() {
               <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'grey.50' }}>
                 <PeopleIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
                 <Typography variant="h6" color="text.secondary" gutterBottom>
-                  您还没有加入任何社区
+                  You have not joined any communities yet.
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  创建一个新社区或加入已有社区开始分享
+                  Create a new community or join one to start sharing.
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                   <Button variant="contained" onClick={() => setActiveTab(1)}>
-                    创建社区
+                    Create
                   </Button>
                   <Button variant="outlined" onClick={() => setActiveTab(2)}>
-                    加入社区
+                    Join
                   </Button>
                 </Box>
               </Paper>
             )}
           </TabPanel>
 
-          {/* 创建社区选项卡 */}
+          {/* Create tab */}
           <TabPanel value={activeTab} index={1}>
             <Box
               sx={{
@@ -327,20 +327,20 @@ export default function Communities() {
                 sx={{ width: '100%', maxWidth: 560, display: 'grid', gap: 2 }}
               >
                 <TextField
-                  label="社区名称"
+                  label="Community Name"
                   value={createName}
                   onChange={(e) => setCreateName(e.target.value)}
                   required
                 />
                 <TextField
-                  label="社区简介"
+                  label="Description"
                   value={createDesc}
                   onChange={(e) => setCreateDesc(e.target.value)}
                   multiline
                   minRows={3}
                 />
                 <Button type="submit" variant="contained" disabled={loading || !createName.trim()}>
-                  {loading ? <CircularProgress size={20} color="inherit" /> : '创建社区'}
+                  {loading ? <CircularProgress size={20} color="inherit" /> : 'Create Community'}
                 </Button>
               </Box>
 
@@ -356,10 +356,10 @@ export default function Communities() {
                   }}
                 >
                   <Typography variant="body2" sx={{ color: '#166534', mb: 1 }}>
-                    ✅ 社区创建成功！
+                    Community created successfully.
                   </Typography>
                   <Typography variant="body2" sx={{ color: '#64748B', mb: 1 }}>
-                    社区 ID（创建时已尝试自动复制，也可再次复制分享给朋友）：
+                    Community ID (auto-copied on create; you can copy again here):
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography
@@ -383,7 +383,7 @@ export default function Communities() {
                       onClick={() => copyToClipboard(lastCreatedId)}
                       sx={{ whiteSpace: 'nowrap' }}
                     >
-                      复制 ID
+                      Copy ID
                     </Button>
                   </Box>
                 </Paper>
@@ -391,7 +391,7 @@ export default function Communities() {
             </Box>
           </TabPanel>
 
-          {/* 加入社区选项卡 */}
+          {/* Join tab */}
           <TabPanel value={activeTab} index={2}>
             <Box
               sx={{
@@ -407,20 +407,20 @@ export default function Communities() {
                 sx={{ width: '100%', maxWidth: 560, display: 'grid', gap: 2 }}
               >
                 <TextField
-                  label="社区 ID"
+                  label="Community ID"
                   value={joinId}
                   onChange={(e) => setJoinId(e.target.value)}
-                  placeholder="例如：COMM_12345"
+                  placeholder="Example: COMM_12345"
                   required
                 />
                 <Button type="submit" variant="contained" disabled={loading || !joinId.trim()}>
-                  {loading ? <CircularProgress size={20} color="inherit" /> : '加入社区'}
+                  {loading ? <CircularProgress size={20} color="inherit" /> : 'Join Community'}
                 </Button>
               </Box>
             </Box>
           </TabPanel>
 
-          {/* 社区看板选项卡 */}
+          {/* Dashboard tab */}
           <TabPanel value={activeTab} index={3}>
             <Box
               sx={{
@@ -444,7 +444,7 @@ export default function Communities() {
                 }}
               >
                 <TextField
-                  label="社区 ID"
+                  label="Community ID"
                   value={dashboardId}
                   onChange={(e) => setDashboardId(e.target.value)}
                   fullWidth
@@ -456,7 +456,7 @@ export default function Communities() {
                   disabled={loading || !dashboardId.trim()}
                   sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', sm: 'center' } }}
                 >
-                  {loading ? <CircularProgress size={20} color="inherit" /> : '加载看板'}
+                  {loading ? <CircularProgress size={20} color="inherit" /> : 'Load Dashboard'}
                 </Button>
               </Box>
 
@@ -467,7 +467,7 @@ export default function Communities() {
                     <Typography variant="body2" sx={{ opacity: 0.9 }}>ID: {dashboard.community_id}</Typography>
                     <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, mt: 2 }}>
                       <PeopleIcon fontSize="small" />
-                      <Typography variant="body2">成员数：{dashboard.member_count}</Typography>
+                      <Typography variant="body2">Members: {dashboard.member_count}</Typography>
                     </Box>
                   </Paper>
 
@@ -478,11 +478,11 @@ export default function Communities() {
                         <Grid item xs={12} md={6} key={`${item.food_name || 'food'}-${idx}`}>
                           <Card sx={{ bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', boxShadow: 'none' }}>
                             <CardContent>
-                              <Typography sx={{ fontWeight: 700, mb: 1 }}>{item.food_name || '未知菜品'}</Typography>
-                              <Typography variant="body2">打饭均值：{formatGrams(item.avg_served_g)}</Typography>
-                              <Typography variant="body2">摄入均值：{formatGrams(item.avg_intake_g)}</Typography>
-                              <Typography variant="body2">剩余均值：{formatGrams(leftover)}</Typography>
-                              <Typography variant="body2">平均速度：{Number(item.avg_speed_g_per_min || 0).toFixed(1)} g/min</Typography>
+                              <Typography sx={{ fontWeight: 700, mb: 1 }}>{item.food_name || 'Unknown food'}</Typography>
+                              <Typography variant="body2">Avg Served: {formatGrams(item.avg_served_g)}</Typography>
+                              <Typography variant="body2">Avg Intake: {formatGrams(item.avg_intake_g)}</Typography>
+                              <Typography variant="body2">Avg Leftover: {formatGrams(leftover)}</Typography>
+                              <Typography variant="body2">Avg Speed: {Number(item.avg_speed_g_per_min || 0).toFixed(1)} g/min</Typography>
                             </CardContent>
                           </Card>
                         </Grid>
@@ -491,7 +491,7 @@ export default function Communities() {
                   </Grid>
 
                   {(!dashboard.food_avg_stats || dashboard.food_avg_stats.length === 0) && (
-                    <Alert severity="info" sx={{ mt: 2 }}>该社区暂无菜品统计数据</Alert>
+                    <Alert severity="info" sx={{ mt: 2 }}>No food statistics available for this community.</Alert>
                   )}
                 </Box>
               )}
@@ -501,7 +501,7 @@ export default function Communities() {
                   <Avatar sx={{ mx: 'auto', mb: 1, bgcolor: '#F1F5F9', color: '#94A3B8' }}>
                     <DashboardIcon />
                   </Avatar>
-                  <Typography sx={{ color: '#64748B' }}>输入社区 ID 后可查看社区聚合看板</Typography>
+                  <Typography sx={{ color: '#64748B' }}>Enter a community ID to view the aggregated dashboard.</Typography>
                 </Box>
               )}
             </Box>

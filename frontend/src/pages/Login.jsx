@@ -33,7 +33,7 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!username.trim() || !password) {
-      setError('请输入用户名和密码');
+      setError('Please enter both username and password.');
       return;
     }
     setError(null);
@@ -49,7 +49,7 @@ export default function Login() {
         window.location.reload();
       }
     } catch (err) {
-      setError(err.message || '请求失败，请重试');
+      setError(err.message || 'Request failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -67,7 +67,7 @@ export default function Login() {
         overflow: 'hidden'
       }}
     >
-      {/* 装饰性背景 */}
+      {/* Decorative background */}
       <Box sx={{
         position: 'absolute', top: -100, right: -100, width: 400, height: 400,
         borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,191,165,0.15) 0%, rgba(0,191,165,0) 70%)'
@@ -88,17 +88,17 @@ export default function Login() {
               boxShadow: '0 8px 16px rgba(0,191,165,0.3)'
             }}>K</Box>
             <Typography variant="h5" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>
-              欢迎来到 K-XYZ
+              Welcome to K-XYZ
             </Typography>
             <Typography variant="body2" sx={{ color: '#64748B' }}>
-              {isRegister ? '创建您的智能餐盒账号' : '登录以管理您的健康饮食'}
+              {isRegister ? 'Create your Smart Lunchbox account' : 'Sign in to manage your healthy diet'}
             </Typography>
           </Box>
 
           <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
             <TextField
               fullWidth
-              placeholder="用户名"
+              placeholder="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               variant="outlined"
@@ -114,7 +114,7 @@ export default function Login() {
             <TextField
               fullWidth
               type={showPassword ? 'text' : 'password'}
-              placeholder="密码"
+              placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               variant="outlined"
@@ -144,7 +144,7 @@ export default function Login() {
               disabled={loading}
               sx={{ py: 1.5, mt: 1, fontSize: '1rem' }}
             >
-              {loading ? <CircularProgress size={24} color="inherit" /> : (isRegister ? '立即注册并登录' : '登录')}
+              {loading ? <CircularProgress size={24} color="inherit" /> : (isRegister ? 'Sign up and continue' : 'Sign in')}
             </Button>
 
             <Box sx={{ textAlign: 'center', mt: 1 }}>
@@ -155,7 +155,7 @@ export default function Login() {
                 onClick={() => { setIsRegister(!isRegister); setError(null); }}
                 sx={{ color: '#64748B', '&:hover': { bgcolor: 'transparent', color: '#00BFA5' } }}
               >
-                {isRegister ? '已有账号？点击登录' : '没有账号？点击注册'}
+                {isRegister ? 'Already have an account? Sign in' : "Don't have an account? Register"}
               </Button>
             </Box>
           </Box>

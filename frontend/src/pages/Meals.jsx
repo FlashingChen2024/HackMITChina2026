@@ -41,13 +41,15 @@ import {
   AutoAwesome as AiVisionIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
+import { Capacitor } from '@capacitor/core';
+import { Camera } from '@capacitor/camera';
 import { getCurrentUser } from '../api/client';
 import { fetchMeals, fetchMealDetail, updateMealFoods, confirmMealVision } from '../api/meals';
 import { analyzeVision } from '../api/vision';
 import { searchFoodLibrary } from '../api/foodLibrary';
 import { compressDataUrlForVision } from '../utils/imageCompress';
 
-/** 目标餐次下拉中「当前餐次」选项的值（非真实 meal_id，提交前需解析） */
+/** Value for "Current Meal" selector option (not a real meal_id; must resolve before submit). */
 const TARGET_MEAL_CURRENT = '__current_meal__';
 
 /**
@@ -101,7 +103,7 @@ export default function Meals() {
     { grid_index: 4, food_name: '', unit_cal_per_100g: '', food_code: '' },
   ]);
 
-  /** 就餐详情弹窗（§4.3 GET /meals/{meal_id}） */
+  /** Meal detail dialog (§4.3 GET /meals/{meal_id}) */
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
@@ -145,20 +147,20 @@ export default function Meals() {
     if (!cameraOpen || !videoRef.current || !streamRef.current) return;
     videoRef.current.srcObject = streamRef.current;
     videoRef.current.play().catch(() => {
-      setCameraError('摄像头已连接，但自动播放失败，请重试打开摄像头');
+      setCameraError('Camera is connected, but autoplay failed. Please try opening the camera again.');
     });
   }, [cameraOpen]);
 
   const formatDate = (isoString) => {
-    if (!isoString) return '未知时间';
+    if (!isoString) return 'Unknown time';
     const date = new Date(isoString);
-    return new Intl.DateTimeFormat('zh-CN', {
+    return new Intl.DateTimeFormat('en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }).format(date);
   };
 
   /**
-   * 打开 §4.3 餐次详情（GET /meals/{meal_id}）并展示 grid_details。
+   * Open §4.3 meal details (GET /meals/{meal_id}) and render grid_details.
    *
    * @param {string} mealId
    * @returns {Promise<void>}
@@ -172,7 +174,7 @@ export default function Meals() {
       const data = await fetchMealDetail(mealId);
       setDetailMeal(data);
     } catch (e) {
-      setDetailError(e?.message || '加载用餐详情失败');
+      setDetailError(e?.message || 'Failed to load meal details.');
     } finally {
       setDetailLoading(false);
     }
@@ -193,8 +195,8 @@ export default function Meals() {
   })), [items]);
 
   /**
-   * 将「目标餐次」下拉值解析为实际用于 API 的 meal_id。
-   * 选「当前餐次」时使用列表首条（与后端列表一致：按开餐时间倒序，即最新一餐）。
+   * Resolve selected target meal value into actual API meal_id.
+   * For "Current Meal", use the first list item (latest meal).
    * @returns {string}
    */
   const resolveTargetMealId = () => {
@@ -205,7 +207,23 @@ export default function Meals() {
   };
 
   /**
-   * 打开摄像头流并渲染到视频组件。
+   * Request Android camera runtime permission in Capacitor app.
+   * @returns {Promise<boolean>}
+   */
+  const ensureAndroidCameraPermission = async () => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      return true;
+    }
+    const current = await Camera.checkPermissions();
+    if (current.camera === 'granted' || current.camera === 'limited') {
+      return true;
+    }
+    const requested = await Camera.requestPermissions({ permissions: ['camera'] });
+    return requested.camera === 'granted' || requested.camera === 'limited';
+  };
+
+  /**
+   * Open camera stream and render into video component.
    * @returns {Promise<void>}
    */
   const startCamera = async () => {
@@ -213,6 +231,11 @@ export default function Meals() {
     setSubmitResult('');
     setCameraReady(false);
     try {
+      const granted = await ensureAndroidCameraPermission();
+      if (!granted) {
+        setCameraError('Camera permission is required on Android. Please allow it in system settings.');
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
         audio: false,
@@ -220,12 +243,12 @@ export default function Meals() {
       streamRef.current = stream;
       setCameraOpen(true);
     } catch (e) {
-      setCameraError(e.message || '无法访问摄像头');
+      setCameraError(e.message || 'Unable to access camera.');
     }
   };
 
   /**
-   * 停止摄像头采集并释放轨道资源。
+   * Stop camera capture and release media tracks.
    * @returns {void}
    */
   const stopCamera = () => {
@@ -238,19 +261,19 @@ export default function Meals() {
   };
 
   /**
-   * 将当前视频帧截图为 base64，用于用户确认识别内容。
+   * Capture current video frame as base64 for user confirmation.
    * @returns {void}
    */
   const captureSnapshot = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     if (video.readyState < 2 || !cameraReady) {
-      setCameraError('摄像头还在初始化，请等待画面出现后再拍照');
+      setCameraError('Camera is still initializing. Please wait for the preview before taking a photo.');
       return;
     }
     const canvas = canvasRef.current;
     if (!video.videoWidth || !video.videoHeight) {
-      setCameraError('摄像头画面不可用，请重新打开摄像头后重试');
+      setCameraError('Camera preview is unavailable. Reopen camera and try again.');
       return;
     }
     canvas.width = video.videoWidth;
@@ -270,7 +293,7 @@ export default function Meals() {
   };
 
   /**
-   * 更新某个格口的食物名称、热量或食物库编码。
+   * Update a grid slot's food name, calories, or food library code.
    * @param {number} gridIndex
    * @param {'food_name' | 'unit_cal_per_100g' | 'food_code'} key
    * @param {string} value
@@ -284,7 +307,7 @@ export default function Meals() {
   };
 
   /**
-   * 单格：压缩图 → §9.1 识菜 → §9.2 食物库，回填名称/热量/food_code。
+   * Single slot flow: compress image -> §9.1 recognition -> §9.2 food library.
    * @param {number} gridIndex
    * @returns {Promise<void>}
    */
@@ -294,7 +317,7 @@ export default function Meals() {
     setError(null);
     const snap = gridSnapshots[gridIndex];
     if (!snap) {
-      setCameraError(`请先拍摄格口 ${gridIndex} 照片`);
+      setCameraError(`Please take a photo for grid ${gridIndex} first.`);
       return;
     }
     setVisionBusy(true);
@@ -304,28 +327,28 @@ export default function Meals() {
       const kw = (vision.keywords_cn && vision.keywords_cn[0])
         || (vision.keywords_en && vision.keywords_en[0]);
       if (!kw) {
-        setCameraError('未能识别菜品关键词，请手动填写');
+        setCameraError('No food keyword recognized. Please fill it manually.');
         return;
       }
       const lib = await searchFoodLibrary(kw);
       const match = lib.matches && lib.matches[0];
       if (!match) {
-        setCameraError(`食物库暂无「${kw}」匹配，请手动填写或换关键词搜索`);
+        setCameraError(`No food library match for "${kw}". Please fill manually or try another keyword.`);
         return;
       }
       updateGridInput(gridIndex, 'food_name', match.food_name_cn);
       updateGridInput(gridIndex, 'unit_cal_per_100g', String(match.default_unit_cal_per_100g));
       updateGridInput(gridIndex, 'food_code', match.food_code);
-      setSubmitResult(`格口 ${gridIndex} 已匹配：${match.food_name_cn}（${match.food_code}）`);
+      setSubmitResult(`Grid ${gridIndex} matched: ${match.food_name_cn} (${match.food_code})`);
     } catch (e) {
-      setError(e.message || '识菜失败');
+      setError(e.message || 'Food recognition failed.');
     } finally {
       setVisionBusy(false);
     }
   };
 
   /**
-   * §9.3 视觉确认挂载（仅 food_code）。
+   * §9.3 visual confirmation attach (food_code only).
    * @returns {Promise<void>}
    */
   const submitVisionConfirm = async () => {
@@ -333,7 +356,7 @@ export default function Meals() {
     setError(null);
     const mealId = resolveTargetMealId();
     if (!mealId) {
-      setError('请先选择要挂载食物信息的餐次（当前餐次需至少有一条就餐记录）');
+      setError('Please select a meal to attach food info (Current Meal requires at least one meal record).');
       return;
     }
     const visionGrids = gridInputs
@@ -343,23 +366,23 @@ export default function Meals() {
         food_code: String(g.food_code).trim(),
       }));
     if (visionGrids.length === 0) {
-      setError('请至少一个格口完成识菜并产生食物编码，或使用下方「手动卡路里计算」');
+      setError('Please complete recognition for at least one grid and get a food code, or use "Manual Calorie Attach" below.');
       return;
     }
     setSubmitLoading(true);
     try {
       const res = await confirmMealVision(mealId, visionGrids);
-      setSubmitResult(res.message || '视觉识别确认成功，卡路里已就绪');
+      setSubmitResult(res.message || 'Visual confirmation succeeded. Calories are ready.');
       await load();
     } catch (e) {
-      setError(e.message || '视觉确认失败');
+      setError(e.message || 'Visual confirmation failed.');
     } finally {
       setSubmitLoading(false);
     }
   };
 
   /**
-   * §4.1 手动挂载：食物名 + 每 100g 卡路里（不向接口发送 photo / food_code）。
+   * §4.1 manual attach: food name + calories per 100g (without photo/food_code).
    * @returns {Promise<void>}
    */
   const submitManualFoods = async () => {
@@ -375,25 +398,25 @@ export default function Meals() {
 
     const mealId = resolveTargetMealId();
     if (!mealId) {
-      setError('请先选择要挂载食物信息的餐次（当前餐次需至少有一条就餐记录）');
+      setError('Please select a meal to attach food info (Current Meal requires at least one meal record).');
       return;
     }
     if (selected.length === 0) {
-      setError('请至少填写一个格口的食物名称和单位卡路里');
+      setError('Please fill at least one grid with food name and calories per 100g.');
       return;
     }
     if (selected.some((item) => Number.isNaN(item.unit_cal_per_100g) || item.unit_cal_per_100g < 0)) {
-      setError('单位卡路里必须是大于等于 0 的数字');
+      setError('Calories per 100g must be a number greater than or equal to 0.');
       return;
     }
 
     setSubmitLoading(true);
     try {
       const res = await updateMealFoods(mealId, selected);
-      setSubmitResult(res.message || '食物信息挂载成功，卡路里已就绪');
+      setSubmitResult(res.message || 'Food info attached successfully. Calories are ready.');
       await load();
     } catch (e) {
-      setError(e.message || '提交失败');
+      setError(e.message || 'Submit failed.');
     } finally {
       setSubmitLoading(false);
     }
@@ -403,21 +426,24 @@ export default function Meals() {
     <Box sx={{ pb: 4, maxWidth: 1000, mx: 'auto' }}>
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
-            菜品视觉识别与卡路里计算
+          <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
+            Food Visual Recognition and Calorie Calculation
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2, color: '#64748B' }}>
+            
           </Typography>
 
           <Stack spacing={2}>
             <TextField
               select
               size="small"
-              label="目标餐次"
+              label="Target Meal"
               value={selectedMealId}
               onChange={(e) => setSelectedMealId(e.target.value)}
-              helperText="「当前餐次」= 列表中开餐时间最新的一餐（与下方记录顺序一致）；其余为指定 meal_id"
+              helperText='"Current Meal" = latest meal by start time in the list below; others are specific meal_id values.'
             >
               <MenuItem value={TARGET_MEAL_CURRENT} disabled={items.length === 0}>
-                当前餐次{items[0] ? `（${formatDate(items[0].start_time)}）` : '（暂无记录）'}
+                Current Meal{items[0] ? ` (${formatDate(items[0].start_time)})` : ' (No records)'}
               </MenuItem>
               {mealOptions.map((option) => (
                 <MenuItem key={option.mealId} value={option.mealId}>{option.label}</MenuItem>
@@ -427,39 +453,41 @@ export default function Meals() {
             <TextField
               select
               size="small"
-              label="当前拍照格口"
+              label="Active Capture Grid"
               value={activeCaptureGrid}
               onChange={(e) => setActiveCaptureGrid(Number(e.target.value))}
+              helperText="Recommended order: capture Grid 1 to 4 sequentially."
             >
-              <MenuItem value={1}>格口 1</MenuItem>
-              <MenuItem value={2}>格口 2</MenuItem>
-              <MenuItem value={3}>格口 3</MenuItem>
-              <MenuItem value={4}>格口 4</MenuItem>
+              <MenuItem value={1}>Grid 1</MenuItem>
+              <MenuItem value={2}>Grid 2</MenuItem>
+              <MenuItem value={3}>Grid 3</MenuItem>
+              <MenuItem value={4}>Grid 4</MenuItem>
             </TextField>
 
             <TextField
               select
               size="small"
-              label="拍照模式"
+              label="Capture Mode"
               value={autoAdvanceCapture ? 'auto' : 'manual'}
               onChange={(e) => setAutoAdvanceCapture(e.target.value === 'auto')}
+              helperText="Burst mode auto-switches to the next grid after each shot."
             >
-              <MenuItem value="auto">连拍模式（自动跳格口）</MenuItem>
-              <MenuItem value="manual">手动模式（不自动跳）</MenuItem>
+              <MenuItem value="auto">Burst Mode (auto switch)</MenuItem>
+              <MenuItem value="manual">Manual Mode (no auto switch)</MenuItem>
             </TextField>
 
             <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
               {!cameraOpen ? (
                 <Button variant="contained" startIcon={<CameraIcon />} onClick={startCamera}>
-                  打开摄像头
+                  Open Camera
                 </Button>
               ) : (
                 <Button variant="outlined" color="error" startIcon={<StopCameraIcon />} onClick={stopCamera}>
-                  关闭摄像头
+                  Close Camera
                 </Button>
               )}
               <Button variant="outlined" onClick={captureSnapshot} disabled={!cameraOpen || !cameraReady}>
-                拍摄格口 {activeCaptureGrid}
+                Capture Grid {activeCaptureGrid}
               </Button>
             </Box>
 
@@ -482,7 +510,7 @@ export default function Meals() {
                 <Grid item xs={12} md={6} key={`snapshot-${gridIndex}`}>
                   <Card variant="outlined" sx={{ borderColor: '#E2E8F0' }}>
                     <CardContent sx={{ p: 2 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1 }}>格口 {gridIndex} 照片</Typography>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Grid {gridIndex} Photo</Typography>
                       {gridSnapshots[gridIndex] ? (
                         <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #E2E8F0', mb: 1 }}>
                           <img
@@ -502,7 +530,7 @@ export default function Meals() {
                             mb: 1,
                           }}
                         >
-                          未拍照
+                          Not captured
                         </Box>
                       )}
                       <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
@@ -511,7 +539,7 @@ export default function Meals() {
                           variant={activeCaptureGrid === gridIndex ? 'contained' : 'outlined'}
                           onClick={() => setActiveCaptureGrid(gridIndex)}
                         >
-                          设为当前拍照格口
+                          Set as Active Grid
                         </Button>
                         <Button
                           size="small"
@@ -521,7 +549,7 @@ export default function Meals() {
                           disabled={visionBusy || submitLoading || !gridSnapshots[gridIndex]}
                           onClick={() => recognizeGrid(gridIndex)}
                         >
-                          AI 识菜
+                          AI Recognize
                         </Button>
                       </Stack>
                     </CardContent>
@@ -535,30 +563,31 @@ export default function Meals() {
                 <Grid item xs={12} md={6} key={grid.grid_index}>
                   <Card variant="outlined" sx={{ borderColor: '#E2E8F0' }}>
                     <CardContent sx={{ p: 2 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1 }}>格口 {grid.grid_index}</Typography>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Grid {grid.grid_index}</Typography>
                       <Stack spacing={1.5}>
                         <TextField
                           size="small"
-                          label="食物名称"
+                          label="Food Name"
                           value={grid.food_name}
                           onChange={(e) => updateGridInput(grid.grid_index, 'food_name', e.target.value)}
-                          placeholder="如：西红柿炒鸡蛋"
+                          placeholder="e.g. Scrambled Eggs with Tomato"
                         />
                         <TextField
                           size="small"
                           type="number"
-                          label="每100g卡路里"
+                          label="Calories per 100g"
                           value={grid.unit_cal_per_100g}
                           onChange={(e) => updateGridInput(grid.grid_index, 'unit_cal_per_100g', e.target.value)}
                           inputProps={{ min: 0, step: '0.1' }}
-                          placeholder="如：80"
+                          placeholder="e.g. 80"
                         />
                         <TextField
                           size="small"
-                          label="食物库编码 (food_code)"
+                          label="Food Library Code (food_code)"
                           value={grid.food_code}
                           onChange={(e) => updateGridInput(grid.grid_index, 'food_code', e.target.value)}
-                          placeholder="识菜后自动填入，9.3 必填"
+                          placeholder="Auto-filled after recognition, required for 9.3"
+                          helperText="Used by POST /meals/{meal_id}/vision-confirm"
                         />
                       </Stack>
                     </CardContent>
@@ -575,7 +604,7 @@ export default function Meals() {
                 onClick={submitVisionConfirm}
                 disabled={submitLoading || visionBusy}
               >
-                {submitLoading ? '提交中...' : '视觉确认挂载 (9.3)'}
+                {submitLoading ? 'Submitting...' : 'Food nutrition recognition by AI'}
               </Button>
               <Button
                 variant="contained"
@@ -583,7 +612,7 @@ export default function Meals() {
                 onClick={submitManualFoods}
                 disabled={submitLoading || visionBusy}
               >
-                {submitLoading ? '提交中...' : '手动卡路里计算 (4.1)'}
+                {submitLoading ? 'Submitting...' : 'Food nutrition recognition by hand'}
               </Button>
               <Button
                 variant="text"
@@ -600,7 +629,7 @@ export default function Meals() {
                   setSubmitResult('');
                 }}
               >
-                清空输入
+                Clear Inputs
               </Button>
             </Box>
 
@@ -612,9 +641,9 @@ export default function Meals() {
 
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, mb: 4, gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>就餐记录</Typography>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#1E293B', mb: 1 }}>Meal Records</Typography>
           <Typography variant="body1" sx={{ color: '#64748B' }}>
-            回顾您的每一次健康饮食；点击记录卡片可查看各餐格详细数据
+            Review each healthy meal. Click a record card to view grid-level details.
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -626,7 +655,7 @@ export default function Meals() {
               sx={{ fontWeight: 600, bgcolor: 'rgba(0,191,165,0.08)', border: 'none' }} 
             />
           )}
-          <Tooltip title="刷新记录">
+          <Tooltip title="Refresh Records">
             <IconButton onClick={() => load()} disabled={loading} sx={{ bgcolor: 'rgba(0,0,0,0.04)' }}>
               <RefreshIcon sx={{ color: '#64748B' }} />
             </IconButton>
@@ -653,7 +682,7 @@ export default function Meals() {
                 <CardActionArea
                   component="div"
                   onClick={() => openMealDetail(m.meal_id)}
-                  aria-label={`查看 ${formatDate(m.start_time)} 用餐详情`}
+                  aria-label={`View meal details for ${formatDate(m.start_time)}`}
                 >
                   <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
@@ -684,14 +713,14 @@ export default function Meals() {
                         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                           <Chip
                             icon={<TimeIcon fontSize="small" />}
-                            label={new Date(m.start_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                            label={new Date(m.start_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                             variant="outlined"
                             sx={{ borderColor: '#E2E8F0', color: '#64748B' }}
                           />
                           {m.duration_minutes != null && (
                             <Chip
                               icon={<TimerIcon fontSize="small" />}
-                              label={`${m.duration_minutes} 分钟`}
+                              label={`${m.duration_minutes} min`}
                               variant="outlined"
                               sx={{ borderColor: '#E2E8F0', color: '#64748B' }}
                             />
@@ -711,7 +740,7 @@ export default function Meals() {
                         </Box>
 
                         <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: 'primary.main', fontWeight: 600 }}>
-                          点击查看餐格详情 →
+                            Click to view grid details
                         </Typography>
                       </Box>
                     </Box>
@@ -729,7 +758,7 @@ export default function Meals() {
                 disabled={loading}
                 sx={{ borderRadius: 8, px: 4 }}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : '加载更多记录'}
+                {loading ? <CircularProgress size={24} color="inherit" /> : 'Load More Records'}
               </Button>
             </Grid>
           )}
@@ -740,9 +769,9 @@ export default function Meals() {
             <Avatar sx={{ width: 64, height: 64, mx: 'auto', mb: 2, bgcolor: '#F1F5F9', color: '#94A3B8' }}>
               <MealIcon fontSize="large" />
             </Avatar>
-            <Typography variant="h6" sx={{ color: '#475569', mb: 1 }}>暂无就餐记录</Typography>
+            <Typography variant="h6" sx={{ color: '#475569', mb: 1 }}>No meal records yet</Typography>
             <Typography variant="body2" sx={{ color: '#94A3B8', maxWidth: 400, mx: 'auto' }}>
-              请先绑定设备并触发遥测数据，或者导入测试数据以查看您的健康饮食记录。
+              Please bind a device and upload telemetry data, or import test data to view records.
             </Typography>
           </CardContent>
         </Card>
@@ -759,7 +788,7 @@ export default function Meals() {
         <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, pr: 1 }}>
           <Box>
             <Typography component="span" variant="h6" sx={{ fontWeight: 800, color: '#1E293B' }}>
-              用餐详情
+              Meal Details
             </Typography>
             {detailMeal?.meal_id && (
               <Typography variant="caption" sx={{ display: 'block', color: '#64748B', fontFamily: 'monospace', mt: 0.5 }}>
@@ -767,7 +796,7 @@ export default function Meals() {
               </Typography>
             )}
           </Box>
-          <IconButton aria-label="关闭" onClick={closeMealDetail} size="small" sx={{ color: '#64748B' }}>
+          <IconButton aria-label="Close" onClick={closeMealDetail} size="small" sx={{ color: '#64748B' }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -796,7 +825,7 @@ export default function Meals() {
                   <Chip
                     size="small"
                     icon={<TimerIcon />}
-                    label={`时长 ${detailMeal.duration_minutes} 分钟`}
+                    label={`Duration ${detailMeal.duration_minutes} min`}
                     variant="outlined"
                     sx={{ borderColor: '#E2E8F0' }}
                   />
@@ -805,32 +834,32 @@ export default function Meals() {
                   <Chip
                     size="small"
                     icon={<CalorieIcon />}
-                    label={`合计 ${Number(detailMeal.total_meal_cal).toFixed(0)} kcal`}
+                    label={`Total ${Number(detailMeal.total_meal_cal).toFixed(0)} kcal`}
                     sx={{ bgcolor: 'rgba(239, 68, 68, 0.08)', color: '#EF4444', border: 'none' }}
                   />
                 )}
               </Box>
 
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1E293B' }}>
-                各餐格数据（grid_details）
+                Grid Details (grid_details)
               </Typography>
 
               {(!detailMeal.grid_details || detailMeal.grid_details.length === 0) ? (
                 <Alert severity="info" sx={{ borderRadius: '12px' }}>
-                  暂无餐格明细，请确认已完成食物挂载或遥测同步。
+                  No grid details yet. Please confirm food attach or telemetry sync is complete.
                 </Alert>
               ) : (
                 <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '12px', borderColor: '#E2E8F0' }}>
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow sx={{ bgcolor: '#F8FAFC' }}>
-                        <TableCell sx={{ fontWeight: 700 }}>餐格</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>食物</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700 }}>打饭 (g)</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700 }}>摄入 (g)</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700 }}>剩余 (g)</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700 }}>热量 (kcal)</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700 }}>速度 (g/min)</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Grid</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Food</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>Served (g)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>Intake (g)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>Leftover (g)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>Calories (kcal)</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>Speed (g/min)</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -864,7 +893,7 @@ export default function Meals() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={closeMealDetail} variant="contained" sx={{ textTransform: 'none', fontWeight: 600 }}>
-            关闭
+            Close
           </Button>
         </DialogActions>
       </Dialog>

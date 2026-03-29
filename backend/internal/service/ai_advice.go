@@ -29,6 +29,8 @@ var (
 	ErrAIResponseInvalid     = errors.New("ai response invalid")
 )
 
+const englishOutputRule = " Output requirement: advice must be written in English only."
+
 type AITextGenerator interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 }
@@ -277,6 +279,8 @@ func (s *AIAdviceService) BuildPrompt(ctx context.Context, userID string, advice
 			threeDaySummary,
 		)
 	}
+
+	prompt += englishOutputRule
 
 	fmt.Printf("[AI_PROMPT] user_id=%s type=%s prompt=%s\n", userID, adviceType, prompt)
 	return prompt, nil
