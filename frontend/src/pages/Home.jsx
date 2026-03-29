@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Box, Typography, Avatar, Card, CardContent, LinearProgress, Grid, Chip } from '@mui/material';
 import { AccessTime, Speed, Restaurant } from '@mui/icons-material';
 import { getCurrentUser } from '../api/client';
-import { fetchMeals } from '../api/meals';
+import { fetchMealDetail, fetchMeals } from '../api/meals';
 import { listBindings } from '../api/devices';
 
 // Calculate meal progress (intake / served * 100)
@@ -56,21 +56,33 @@ export default function Home() {
 
         const [devicesRes, mealsRes] = await Promise.all([
           listBindings(),
-          fetchMeals({ limit: 1 }),
+          fetchMeals(),
         ]);
 
         setDevices(devicesRes.devices || []);
 
         if (mealsRes.items && mealsRes.items.length > 0) {
-          const latest = mealsRes.items[0];
-          setLatestMeal(latest);
+          const latestSummary = mealsRes.items[0];
+          const latestDetail = await fetchMealDetail(latestSummary.meal_id);
+          setLatestMeal(latestDetail);
 
-          if (latest.start_time) {
-            setStats({
-              totalTime: formatDuration(latest.start_time),
-              avgSpeed: latest.avg_speed_g_per_min || 0,
-            });
-          }
+          const startTime = latestSummary.start_time || latestDetail.start_time;
+          const detailList = latestDetail.grid_details || [];
+          const speedList = detailList
+            .map((g) => Number(g?.speed_g_per_min || 0))
+            .filter((v) => v > 0);
+          const avgSpeed =
+            speedList.length > 0
+              ? speedList.reduce((sum, v) => sum + v, 0) / speedList.length
+              : 0;
+
+          setStats({
+            totalTime: startTime ? formatDuration(startTime) : '',
+            avgSpeed,
+          });
+        } else {
+          setLatestMeal(null);
+          setStats({ totalTime: '', avgSpeed: 0 });
         }
       } catch (err) {
         console.error('Failed to load home data:', err);
@@ -90,7 +102,7 @@ export default function Home() {
     const detail = latestMeal?.grid_details?.find(g => g.grid_index === index);
     const served = detail?.served_g || 0;
     const intake = detail?.intake_g || 0;
-    const foodName = detail?.food_name || `Grid ${index}`;
+    const foodName = `Grid${index}`;
     const progress = calcProgress(served, intake);
     
     return {

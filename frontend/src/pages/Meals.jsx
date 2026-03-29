@@ -41,6 +41,8 @@ import {
   AutoAwesome as AiVisionIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
+import { Capacitor } from '@capacitor/core';
+import { Camera } from '@capacitor/camera';
 import { getCurrentUser } from '../api/client';
 import { fetchMeals, fetchMealDetail, updateMealFoods, confirmMealVision } from '../api/meals';
 import { analyzeVision } from '../api/vision';
@@ -205,6 +207,22 @@ export default function Meals() {
   };
 
   /**
+   * Request Android camera runtime permission in Capacitor app.
+   * @returns {Promise<boolean>}
+   */
+  const ensureAndroidCameraPermission = async () => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      return true;
+    }
+    const current = await Camera.checkPermissions();
+    if (current.camera === 'granted' || current.camera === 'limited') {
+      return true;
+    }
+    const requested = await Camera.requestPermissions({ permissions: ['camera'] });
+    return requested.camera === 'granted' || requested.camera === 'limited';
+  };
+
+  /**
    * Open camera stream and render into video component.
    * @returns {Promise<void>}
    */
@@ -213,6 +231,11 @@ export default function Meals() {
     setSubmitResult('');
     setCameraReady(false);
     try {
+      const granted = await ensureAndroidCameraPermission();
+      if (!granted) {
+        setCameraError('Camera permission is required on Android. Please allow it in system settings.');
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
         audio: false,
